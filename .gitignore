@@ -1,0 +1,5 @@
+data/
+.idea/
+.venv/
+shared_state.json
+AI_CONTEXT.md

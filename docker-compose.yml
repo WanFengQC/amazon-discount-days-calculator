@@ -1,0 +1,9 @@
+﻿version: "3.9"
+services:
+  discount-api:
+    build: .
+    container_name: amazon-discount-days-calculator
+    ports:
+      - "8010:8010"
+    restart: unless-stopped
+

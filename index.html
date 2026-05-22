@@ -1,0 +1,1592 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>亚马逊折扣天数计算器</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f1f7ff;
+      --card: #ffffff;
+      --primary: #2f80ed;
+      --primary-soft: #dcecff;
+      --text: #16324f;
+      --muted: #5f7f9d;
+      --ok: #1b8f5a;
+      --warn: #d94848;
+      --line: #cfe2f7;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top right, #e5f1ff 0%, var(--bg) 42%, #edf5ff 100%);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 24px auto 40px;
+      padding: 0 16px;
+    }
+
+    .title {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 4px 0 8px;
+      color: #1e5fae;
+    }
+
+    .subtitle {
+      margin: 0 0 20px;
+      color: var(--muted);
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 10px 24px rgba(44, 113, 196, 0.08);
+      margin-bottom: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-self: end;
+    }
+    .import-box {
+      padding: 0;
+      border: none;
+      background: transparent;
+    }
+    .file-picker {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .file-link-btn {
+      height: 38px;
+      border: 1px solid #c7dcf5;
+      background: #fff;
+      color: #2f6fb7;
+      border-radius: 8px;
+      padding: 0 10px;
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .file-input-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .file-btn {
+      height: 38px;
+      border: 1px solid #88b5e8;
+      background: linear-gradient(180deg, #ffffff 0%, #edf5ff 100%);
+      color: #1f5ea8;
+      border-radius: 8px;
+      padding: 0 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      white-space: nowrap;
+    }
+    .file-name {
+      flex: 1;
+      min-width: 0;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      border: 1px solid #c7dcf5;
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 0 10px;
+      font-size: 13px;
+      color: #56789b;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .file-name:hover { text-decoration: underline; }
+
+    label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    input, select, button {
+      height: 38px;
+      border-radius: 10px;
+      border: 1px solid #b9d5f3;
+      background: #f8fbff;
+      color: var(--text);
+      padding: 0 10px;
+      font-size: 14px;
+    }
+
+    button {
+      cursor: pointer;
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+      font-weight: 600;
+      transition: 0.2s;
+    }
+
+    button:hover { filter: brightness(0.95); }
+    button.secondary {
+      background: #edf5ff;
+      color: #1f5ea8;
+      border-color: #bed9f7;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: end;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .week-header {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+      margin-bottom: 6px;
+    }
+    .week-day {
+      text-align: center;
+      font-size: 12px;
+      color: #5b7da0;
+      font-weight: 600;
+    }
+
+    .calendar {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .day.placeholder {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .day {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 9px 10px;
+      min-height: 84px;
+      cursor: pointer;
+      text-align: left;
+      box-shadow: 0 2px 8px rgba(34, 96, 170, 0.06);
+    }
+
+    .day.selected {
+      background: #d9ebff;
+      border-color: #5c97da;
+    }
+    .day.recommended { box-shadow: inset 0 0 0 2px #2f80ed; }
+    .day.violation {
+      border-color: #de5e5e;
+      background: #fff1f1;
+    }
+    .day.disabled {
+      background: #f2f5f9;
+      border-color: #d9e4f2;
+      color: #9aaec4;
+      cursor: not-allowed;
+      opacity: 0.85;
+    }
+
+    .day .date {
+      font-size: 13px;
+      font-weight: 700;
+      color: #1f5ea8;
+      line-height: 1.3;
+      letter-spacing: 0.1px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .day .date-main {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .day .date-offset {
+      color: #3f6c99;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .day .tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      margin-top: 6px;
+      color: #2f4d6c;
+      line-height: 1.2;
+      background: #edf5ff;
+      border: 1px solid #c9ddf5;
+      border-radius: 999px;
+      padding: 1px 7px;
+    }
+    .day .meta {
+      font-size: 9px;
+      margin-top: 4px;
+      color: #527495;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .day.selected .date,
+    .day.selected .tag {
+      color: #133e70;
+    }
+    .day.violation .date,
+    .day.violation .tag {
+      color: #a33a3a;
+    }
+    .day.violation .tag {
+      background: #ffeaea;
+      border-color: #efb2b2;
+    }
+    .day.selected .tag {
+      background: #e0efff;
+      border-color: #9fc3ed;
+      color: #1d4d84;
+    }
+    .day.recommended .tag {
+      background: #e7f1ff;
+      border-color: #8db8eb;
+    }
+    .day.disabled .date,
+    .day.disabled .tag,
+    .day.disabled .meta {
+      color: #9aaec4;
+    }
+    .day.disabled .tag {
+      background: #f2f5f9;
+      border-color: #d9e4f2;
+    }
+
+    .tip { margin-top: 8px; color: var(--muted); font-size: 13px; }
+  .error { margin-top: 8px; color: var(--warn); font-size: 13px; }
+  .ok { color: var(--ok); }
+  .modal-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(18, 41, 68, 0.36);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 16px;
+  }
+  .modal-mask.show { display: flex; }
+  .modal-card {
+    width: min(980px, 100%);
+    max-height: 86vh;
+    overflow: auto;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    box-shadow: 0 12px 32px rgba(31, 74, 124, 0.25);
+  }
+  .modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .close-btn {
+    height: 30px;
+    min-width: 30px;
+    border-radius: 8px;
+    border: 1px solid #b9d5f3;
+    background: #f6faff;
+    color: #3f6c99;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .member-dropdown {
+    position: relative;
+  }
+  .member-trigger {
+    width: 100%;
+    height: 38px;
+    border: 1px solid #b9d5f3;
+    border-radius: 10px;
+    background: #f8fbff;
+    color: var(--text);
+    padding: 0 10px;
+    font-size: 14px;
+    text-align: left;
+  }
+  .member-panel {
+    position: fixed;
+    max-height: 220px;
+    min-width: 260px;
+    width: 320px;
+    overflow: auto;
+    background: #fff;
+    border: 1px solid #cfe2f7;
+    border-radius: 10px;
+    box-shadow: 0 8px 18px rgba(34, 96, 170, 0.15);
+    padding: 6px;
+    display: none;
+    z-index: 2100;
+  }
+  .member-panel.show { display: block; }
+  .member-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .member-item:hover { background: #f2f8ff; }
+  .member-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #dcecff;
+    flex: none;
+  }
+  .member-avatar-fallback {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #dcecff;
+    color: #3d6d9d;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    font-weight: 700;
+  }
+  .preview-wrap {
+    margin-top: 8px;
+    display: grid;
+    gap: 8px;
+    max-height: 320px;
+    overflow: auto;
+  }
+  .preview-group {
+    border: 1px solid #cfe2f7;
+    border-radius: 10px;
+    background: #f8fbff;
+    padding: 8px;
+  }
+  .preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .preview-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1f5ea8;
+  }
+  .preview-badge {
+    font-size: 11px;
+    color: #5f7f9d;
+    background: #edf5ff;
+    border: 1px solid #c9ddf5;
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+  .preview-list {
+    margin-top: 8px;
+    display: grid;
+    gap: 6px;
+  }
+  .preview-item {
+    font-size: 12px;
+    color: #3f6388;
+    background: #fff;
+    border: 1px solid #dbeafb;
+    border-radius: 8px;
+    padding: 6px 8px;
+  }
+  .history-box summary {
+    cursor: pointer;
+    color: #2f6fb7;
+    font-weight: 600;
+    user-select: none;
+  }
+  .history-range {
+    margin-top: 8px;
+    color: #5f7f9d;
+    font-size: 13px;
+  }
+  .readonly-day {
+    cursor: default;
+  }
+
+    @media (max-width: 1000px) {
+      .calendar, .week-header { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 850px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 520px) {
+      .grid { grid-template-columns: 1fr; }
+      .calendar, .week-header { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1 class="title">亚马逊折扣天数计算器</h1>
+  <p class="subtitle">规则：任意 90 天窗口内折扣日必须小于 45（最多 44 天）</p>
+
+  <section class="card">
+    <div class="grid">
+      <div class="field">
+        <label id="importTitle">导入促销记录（Excel）</label>
+        <div class="import-box">
+          <div class="file-picker">
+            <input id="fileInput" class="file-input-hidden" type="file" accept=".xlsx,.xls" />
+            <button id="fileBtn" type="button" class="file-btn">选择文件</button>
+            <div id="fileName" class="file-name">未选择文件</div>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label>选择产品（ASIN | SKU）</label>
+        <select id="productSelect" disabled>
+          <option value="">请先导入文件</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>未来模拟天数 F（>=1）</label>
+        <input id="futureDays" type="number" min="1" value="90" />
+      </div>
+      <div class="field">
+        <label>推荐模式</label>
+        <select id="modeSelect">
+          <option value="even">均匀分布</option>
+          <option value="centered_even">中间优先均匀分布</option>
+          <option value="centered">中间优先</option>
+          <option value="head">头部优先</option>
+          <option value="tail">尾部优先</option>
+          <option value="custom">自定义区间均匀分布</option>
+        </select>
+      </div>
+      <div class="field" id="customStartWrap" style="display:none;">
+        <label>优先起始偏移（D+）</label>
+        <input id="customStart" type="number" min="0" value="0" />
+      </div>
+      <div class="field" id="customEndWrap" style="display:none;">
+        <label>优先结束偏移（D+）</label>
+        <input id="customEnd" type="number" min="0" value="14" />
+      </div>
+    </div>
+    <div class="actions">
+      <button id="recommendBtn">一键自动推荐</button>
+      <button id="clearBtn" class="secondary">清空模拟</button>
+      <button id="saveBtn" class="secondary">保存模拟</button>
+      <button id="exportBtn" class="secondary">导出结果</button>
+      <button id="openFeishuModalBtn" class="secondary" type="button">飞书配置</button>
+    </div>
+    <div id="importTip" class="tip">支持你示例里的结构：`促销N` + 右侧结束日期列。</div>
+    <div id="errorBox" class="error"></div>
+  </section>
+
+  <div id="feishuModal" class="modal-mask">
+    <section class="modal-card">
+      <div class="modal-head">
+        <div class="tip" style="font-weight:600;color:#2f6fb7;">飞书提醒配置</div>
+        <button id="closeFeishuModalBtn" class="close-btn" type="button">×</button>
+      </div>
+    <div class="grid" style="margin-top:8px;">
+      <div class="field">
+        <label>App ID</label>
+        <input id="feishuAppId" type="text" placeholder="cli_xxx" />
+      </div>
+      <div class="field">
+        <label>App Secret（留空=不改）</label>
+        <input id="feishuAppSecret" type="password" placeholder="输入后保存" />
+      </div>
+      <div class="field">
+        <label>已选成员</label>
+        <div class="member-dropdown" id="memberDropdown">
+          <button id="memberTrigger" type="button" class="member-trigger">请选择成员</button>
+          <div id="memberPanel" class="member-panel"></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>启用提醒</label>
+        <select id="feishuEnabled">
+          <option value="true">启用</option>
+          <option value="false">停用</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="saveFeishuBtn" class="secondary" type="button">保存飞书配置</button>
+      <button id="sendFeishuBtn" class="secondary" type="button">立即发送今日提醒</button>
+      <button id="previewFeishuBtn" class="secondary" type="button">预览提醒计划</button>
+    </div>
+    <div id="feishuTip" class="tip"></div>
+    <input id="feishuOpenIds" type="hidden" />
+    <div id="feishuPreview" class="preview-wrap"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <details class="history-box">
+      <summary>表格记录与历史记录（可折叠）</summary>
+      <div id="historyRangeText" class="history-range"></div>
+      <div class="week-header">
+        <div class="week-day">周一</div>
+        <div class="week-day">周二</div>
+        <div class="week-day">周三</div>
+        <div class="week-day">周四</div>
+        <div class="week-day">周五</div>
+        <div class="week-day">周六</div>
+        <div class="week-day">周日</div>
+      </div>
+      <div id="historyCalendar" class="calendar"></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="tip">未来日历模拟（单点切换折扣日，灰色=当前不可选）</div>
+    <div id="violationText" class="tip"></div>
+    <div class="week-header">
+      <div class="week-day">周一</div>
+      <div class="week-day">周二</div>
+      <div class="week-day">周三</div>
+      <div class="week-day">周四</div>
+      <div class="week-day">周五</div>
+      <div class="week-day">周六</div>
+      <div class="week-day">周日</div>
+    </div>
+    <div id="calendar" class="calendar"></div>
+  </section>
+</div>
+
+<script>
+  const API_BASE = "";
+  const state = {
+    recordsByProduct: new Map(),
+    selectedKey: "",
+    futureDays: 90,
+    selectedOffsets: new Set(),
+    recommendedOffsets: new Set(),
+    dayRows: [],
+    loading: false,
+    productSim: new Map(),
+    importedFileName: "",
+  };
+
+  const fileInput = document.getElementById("fileInput");
+  const fileBtn = document.getElementById("fileBtn");
+  const fileName = document.getElementById("fileName");
+  const productSelect = document.getElementById("productSelect");
+  const futureDaysInput = document.getElementById("futureDays");
+  const modeSelect = document.getElementById("modeSelect");
+  const recommendBtn = document.getElementById("recommendBtn");
+  const clearBtn = document.getElementById("clearBtn");
+  const saveBtn = document.getElementById("saveBtn");
+  const exportBtn = document.getElementById("exportBtn");
+  const customStartWrap = document.getElementById("customStartWrap");
+  const customEndWrap = document.getElementById("customEndWrap");
+  const customStartInput = document.getElementById("customStart");
+  const customEndInput = document.getElementById("customEnd");
+  const openFeishuModalBtn = document.getElementById("openFeishuModalBtn");
+  const closeFeishuModalBtn = document.getElementById("closeFeishuModalBtn");
+  const feishuModal = document.getElementById("feishuModal");
+  const feishuAppId = document.getElementById("feishuAppId");
+  const feishuAppSecret = document.getElementById("feishuAppSecret");
+  const feishuOpenIds = document.getElementById("feishuOpenIds");
+  const memberDropdown = document.getElementById("memberDropdown");
+  const memberTrigger = document.getElementById("memberTrigger");
+  const memberPanel = document.getElementById("memberPanel");
+  const feishuEnabled = document.getElementById("feishuEnabled");
+  const saveFeishuBtn = document.getElementById("saveFeishuBtn");
+  const sendFeishuBtn = document.getElementById("sendFeishuBtn");
+  const previewFeishuBtn = document.getElementById("previewFeishuBtn");
+  const feishuTip = document.getElementById("feishuTip");
+  const feishuPreview = document.getElementById("feishuPreview");
+  let selectedOpenIdSet = new Set();
+  function todayIso() {
+    const t = new Date();
+    return fmtDate(new Date(t.getFullYear(), t.getMonth(), t.getDate()));
+  }
+  function dateAddIso(iso, delta) {
+    const [y, m, d] = iso.split("-").map(Number);
+    const t = new Date(y, m - 1, d);
+    t.setDate(t.getDate() + delta);
+    return fmtDate(t);
+  }
+  function diffDaysIso(fromIso, toIso) {
+    const [y1, m1, d1] = fromIso.split("-").map(Number);
+    const [y2, m2, d2] = toIso.split("-").map(Number);
+    const a = new Date(y1, m1 - 1, d1);
+    const b = new Date(y2, m2 - 1, d2);
+    return Math.floor((b.getTime() - a.getTime()) / 86400000);
+  }
+
+  function saveCurrentProductState() {
+    if (!state.selectedKey) return;
+    const base = todayIso();
+    const selectedDates = Array.from(state.selectedOffsets)
+      .map((off) => dateAddIso(base, Number(off)))
+      .sort();
+    state.productSim.set(state.selectedKey, {
+      selectedOffsets: Array.from(state.selectedOffsets),
+      recommendedOffsets: Array.from(state.recommendedOffsets),
+      selectedDates,
+      baseDate: base,
+    });
+  }
+
+  function serializeRecords() {
+    const out = [];
+    for (const [key, val] of state.recordsByProduct.entries()) {
+      out.push({
+        key,
+        label: val.label,
+        dates: Array.from(val.dates || []),
+        meta: val.meta || {}
+      });
+    }
+    return out;
+  }
+
+  async function saveSharedStateToServer() {
+    const payload = {
+      records: serializeRecords(),
+      product_sim: Array.from(state.productSim.entries()).map(([key, sim]) => ({
+        key,
+        selectedOffsets: sim?.selectedOffsets || [],
+        recommendedOffsets: sim?.recommendedOffsets || [],
+        selectedDates: sim?.selectedDates || [],
+        baseDate: sim?.baseDate || todayIso(),
+      })),
+      future_days: Number(futureDaysInput.value) || 90,
+      mode: modeSelect.value,
+      custom_start: Number(customStartInput.value) || 0,
+      custom_end: Number(customEndInput.value) || 14,
+      selected_key: state.selectedKey || ""
+      ,
+      file_name: state.importedFileName || ""
+    };
+    await fetch(`${API_BASE}/api/shared-state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  }
+
+  function hydrateFromSharedState(data) {
+    state.recordsByProduct.clear();
+    state.productSim.clear();
+    productSelect.innerHTML = "";
+    const records = Array.isArray(data.records) ? data.records : [];
+    for (const item of records) {
+      const key = item.key;
+      const val = {
+        label: item.label || key,
+        dates: new Set(item.dates || []),
+        meta: item.meta || {}
+      };
+      state.recordsByProduct.set(key, val);
+      const op = document.createElement("option");
+      op.value = key;
+      op.textContent = val.label;
+      productSelect.appendChild(op);
+    }
+    const sims = Array.isArray(data.product_sim) ? data.product_sim : [];
+    for (const s of sims) {
+      state.productSim.set(s.key, {
+        selectedOffsets: s.selectedOffsets || [],
+        recommendedOffsets: s.recommendedOffsets || [],
+        selectedDates: s.selectedDates || [],
+        baseDate: s.baseDate || todayIso(),
+      });
+    }
+    if (records.length) {
+      productSelect.disabled = false;
+      const preferred = data.selected_key && state.recordsByProduct.has(data.selected_key)
+        ? data.selected_key
+        : records[0].key;
+      state.selectedKey = preferred;
+      productSelect.value = preferred;
+      loadProductState(preferred);
+    }
+    state.importedFileName = data.file_name || "";
+    if (state.importedFileName) {
+      fileName.textContent = state.importedFileName;
+    }
+  }
+
+  function loadProductState(key) {
+    const saved = state.productSim.get(key);
+    if (!saved) {
+      state.selectedOffsets = new Set();
+      state.recommendedOffsets = new Set();
+      return;
+    }
+    const tIso = todayIso();
+    let dates = Array.isArray(saved.selectedDates) ? saved.selectedDates.filter(Boolean) : [];
+    if (!dates.length) {
+      const base = saved.baseDate || tIso;
+      dates = (saved.selectedOffsets || []).map((off) => dateAddIso(base, Number(off)));
+    }
+    const futureOffsets = dates
+      .map((ds) => diffDaysIso(tIso, ds))
+      .filter((x) => Number.isFinite(x) && x >= 0)
+      .sort((a, b) => a - b);
+    state.selectedOffsets = new Set(futureOffsets);
+    state.recommendedOffsets = new Set(saved.recommendedOffsets || []);
+  }
+
+  function migrateFutureToHistoryAllProducts() {
+    const tIso = todayIso();
+    for (const [key, sim] of state.productSim.entries()) {
+      const rec = state.recordsByProduct.get(key);
+      if (!rec) continue;
+      let dates = Array.isArray(sim.selectedDates) ? sim.selectedDates.filter(Boolean) : [];
+      if (!dates.length) {
+        const base = sim.baseDate || tIso;
+        dates = (sim.selectedOffsets || []).map((off) => dateAddIso(base, Number(off)));
+      }
+      const nextFuture = [];
+      for (const ds of dates) {
+        if (ds < tIso) rec.dates.add(ds);
+        else nextFuture.push(ds);
+      }
+      sim.selectedDates = nextFuture.sort();
+      sim.baseDate = tIso;
+      sim.selectedOffsets = sim.selectedDates
+        .map((ds) => diffDaysIso(tIso, ds))
+        .filter((x) => Number.isFinite(x) && x >= 0)
+        .sort((a, b) => a - b);
+      state.productSim.set(key, sim);
+    }
+  }
+
+  const calendarEl = document.getElementById("calendar");
+  const errorBox = document.getElementById("errorBox");
+  const violationText = document.getElementById("violationText");
+  const historyRangeText = document.getElementById("historyRangeText");
+  const historyCalendar = document.getElementById("historyCalendar");
+
+  function fmtDate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function parseDateSafe(value) {
+    if (value == null || value === "") return null;
+    if (value instanceof Date && !isNaN(value)) return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    if (typeof value === "number") {
+      const parsed = XLSX.SSF.parse_date_code(value);
+      if (!parsed) return null;
+      return new Date(parsed.y, parsed.m - 1, parsed.d);
+    }
+    if (typeof value === "string") {
+      const s = value.trim();
+      if (!s) return null;
+      const d = new Date(s);
+      if (!isNaN(d)) return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const mdY = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (mdY) return new Date(Number(mdY[3]), Number(mdY[1]) - 1, Number(mdY[2]));
+    }
+    return null;
+  }
+
+  function addDays(base, delta) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + delta);
+    return d;
+  }
+
+  function toOffsetFromToday(dateStr) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const t = new Date(y, m - 1, d);
+    const today = new Date();
+    const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const ms = t.getTime() - t0.getTime();
+    return Math.floor(ms / 86400000);
+  }
+
+  function sortIsoDates(arr) {
+    return [...arr].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+
+  function renderHistoryPanel() {
+    const product = state.recordsByProduct.get(state.selectedKey);
+    const sheetDates = sortIsoDates(Array.from(product?.dates || []));
+    // 当前口径：历史记录来自导入表格中的历史日期。
+    const historyDates = sheetDates;
+    historyCalendar.innerHTML = "";
+    const historySet = new Set(historyDates);
+    const today = new Date();
+    const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - 89);
+    const startIso = fmtDate(startDate);
+    const endIso = fmtDate(endDate);
+    const firstSheet = sheetDates.length ? sheetDates[0] : "-";
+    historyRangeText.textContent = `固定90天展示：${startIso} ~ ${endIso}（表格首日：${firstSheet}）`;
+
+    const jsDay = startDate.getDay(); // Sun=0..Sat=6
+    const mondayBased = (jsDay + 6) % 7; // Mon=0..Sun=6
+    for (let i = 0; i < mondayBased; i++) {
+      const ph = document.createElement("div");
+      ph.className = "day placeholder";
+      historyCalendar.appendChild(ph);
+    }
+
+    for (let i = 0; i < 90; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      const iso = fmtDate(d);
+      const selected = historySet.has(iso);
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "day";
+      if (selected) card.classList.add("selected");
+      card.innerHTML = `<div class="date"><span class="date-main">${iso}</span><span class="date-offset">H-${89 - i}</span></div><div class="tag">${selected ? "已选" : "未选"}</div><div class="meta">来源: 表格/历史</div><div class="meta">点击可切换</div>`;
+      card.onclick = async () => {
+        const p = state.recordsByProduct.get(state.selectedKey);
+        if (!p) return;
+        if (p.dates.has(iso)) p.dates.delete(iso);
+        else p.dates.add(iso);
+        renderHistoryPanel();
+        await saveSharedStateToServer();
+        await recalc({ recommend: false });
+      };
+      historyCalendar.appendChild(card);
+    }
+  }
+
+  function clearError() { errorBox.textContent = ""; }
+  function setError(msg) { errorBox.textContent = msg; }
+  function setFeishuTip(msg) { feishuTip.textContent = msg || ""; }
+  function syncOpenIdsFromSet() {
+    const ids = Array.from(selectedOpenIdSet);
+    feishuOpenIds.value = ids.join(",");
+    memberTrigger.textContent = ids.length ? `已选 ${ids.length} 人` : "请选择成员";
+  }
+  function positionMemberPanel() {
+    const rect = memberTrigger.getBoundingClientRect();
+    const top = rect.bottom + 6;
+    const left = rect.left;
+    const maxH = Math.max(140, window.innerHeight - top - 12);
+    memberPanel.style.top = `${top}px`;
+    memberPanel.style.left = `${left}px`;
+    memberPanel.style.width = `${Math.max(rect.width, 320)}px`;
+    memberPanel.style.maxHeight = `${Math.min(360, maxH)}px`;
+  }
+  async function parseApiResponse(resp) {
+    const ct = (resp.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) {
+      return await resp.json();
+    }
+    const txt = await resp.text();
+    return { detail: txt || `HTTP ${resp.status}` };
+  }
+  function openFeishuModal() { feishuModal.classList.add("show"); }
+  function closeFeishuModal() { feishuModal.classList.remove("show"); }
+
+  function readWorkbook(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const wb = XLSX.read(data, { type: "array", cellDates: true });
+          resolve(wb);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function parsePromoRanges(row) {
+    const entries = Object.entries(row);
+    const ranges = [];
+    for (let i = 0; i < entries.length; i++) {
+      const [key, val] = entries[i];
+      if (typeof key === "string" && key.startsWith("促销")) {
+        const next = entries[i + 1] ? entries[i + 1][1] : null;
+        const start = parseDateSafe(val);
+        const end = parseDateSafe(next);
+        if (!start || !end) continue;
+        if (start > end) continue;
+        ranges.push([start, end]);
+      }
+    }
+    return ranges;
+  }
+
+  function expandRangesToSet(ranges) {
+    const s = new Set();
+    for (const [start, end] of ranges) {
+      let cur = new Date(start);
+      while (cur <= end) {
+        s.add(fmtDate(cur));
+        cur = addDays(cur, 1);
+      }
+    }
+    return s;
+  }
+
+  async function recalc({ recommend = false } = {}) {
+    const F = Number(futureDaysInput.value);
+    if (!Number.isFinite(F) || F < 1 || !Number.isInteger(F)) {
+      setError("未来天数 F 需大于等于 1。");
+      return;
+    }
+    if (!state.selectedKey) {
+      setError("请先导入文件并选择商品。");
+      return;
+    }
+    migrateFutureToHistoryAllProducts();
+    if (state.loading) return;
+    clearError();
+    const mode = modeSelect.value;
+    const preferredStart = mode === "custom" ? Number(customStartInput.value) : null;
+    const preferredEnd = mode === "custom" ? Number(customEndInput.value) : null;
+    if (mode === "custom") {
+      if (!Number.isFinite(preferredStart) || preferredStart < 0 || !Number.isInteger(preferredStart)) {
+        setError("自定义起始偏移需为大于等于0的整数。");
+        return;
+      }
+      if (!Number.isFinite(preferredEnd) || preferredEnd < 0 || !Number.isInteger(preferredEnd)) {
+        setError("自定义结束偏移需为大于等于0的整数。");
+        return;
+      }
+    }
+    state.futureDays = F;
+    state.loading = true;
+    recommendBtn.disabled = true;
+    clearBtn.disabled = true;
+    try {
+      const product = state.recordsByProduct.get(state.selectedKey);
+      const historyDates = Array.from(product?.dates || []);
+      const payload = {
+        history_dates: historyDates,
+        future_days: F,
+        selected_offsets: Array.from(state.selectedOffsets).sort((a, b) => a - b),
+        mode,
+        preferred_start: preferredStart,
+        preferred_end: preferredEnd,
+        recommend
+      };
+      const resp = await fetch(`${API_BASE}/api/calculate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        throw new Error(`后端返回 ${resp.status}`);
+      }
+      const data = await resp.json();
+      state.dayRows = data.days || [];
+      state.selectedOffsets = new Set(data.selected_offsets || []);
+      state.recommendedOffsets = new Set(data.recommended_offsets || []);
+      saveCurrentProductState();
+      try { await saveSharedStateToServer(); } catch (_) {}
+      violationText.textContent = data.message || "";
+      renderCalendar();
+      renderHistoryPanel();
+    } catch (err) {
+      setError(`计算失败：${err.message || err}。请先启动后端：uvicorn backend:app --reload --port 8010`);
+    } finally {
+      state.loading = false;
+      recommendBtn.disabled = false;
+      clearBtn.disabled = false;
+    }
+  }
+
+  function renderCalendar() {
+    calendarEl.innerHTML = "";
+    const rows = state.dayRows;
+    if (rows.length > 0) {
+      const [y, m, d] = rows[0].date.split("-").map(Number);
+      const firstDate = new Date(y, m - 1, d);
+      const jsDay = firstDate.getDay(); // Sun=0..Sat=6
+      const mondayBased = (jsDay + 6) % 7; // Mon=0..Sun=6
+      for (let i = 0; i < mondayBased; i++) {
+        const ph = document.createElement("div");
+        ph.className = "day placeholder";
+        calendarEl.appendChild(ph);
+      }
+    }
+    rows.forEach((row) => {
+      const btn = document.createElement("button");
+      btn.className = "day";
+      if (row.selected) btn.classList.add("selected");
+      if (row.recommended) btn.classList.add("recommended");
+      if (row.violation) btn.classList.add("violation");
+      if (!row.selected && !row.available) btn.classList.add("disabled");
+      const tag = row.violation
+        ? "冲突"
+        : row.recommended
+        ? "推荐"
+        : !row.selected && !row.available
+        ? "不可选"
+        : row.selected
+        ? "已选"
+        : "未选";
+      btn.innerHTML = `<div class="date"><span class="date-main">${row.date}</span><span class="date-offset">D+${row.offset}</span></div><div class="tag">${tag}</div><div class="meta">前90天: ${row.past90_count}/44</div><div class="meta">选后余量: ${row.remaining_after_select} 天</div>`;
+      btn.onclick = async () => {
+        if (state.loading) return;
+        if (row.selected) {
+          state.selectedOffsets.delete(row.offset);
+        } else {
+          if (!row.available) return;
+          state.selectedOffsets.add(row.offset);
+        }
+        await recalc({ recommend: false });
+      };
+      calendarEl.appendChild(btn);
+    });
+  }
+
+  fileBtn.addEventListener("click", () => fileInput.click());
+  fileName.addEventListener("click", async () => {
+    if (!state.importedFileName) return;
+    try {
+      const resp = await fetch(`${API_BASE}/api/source-file`, { method: "HEAD" });
+      if (!resp.ok) {
+        setError("服务器上未找到源文件，请重新导入一次。");
+        return;
+      }
+      window.open(`${API_BASE}/api/source-file`, "_blank");
+    } catch (_) {
+      setError("下载源文件失败，请检查服务器连接。");
+    }
+  });
+
+  fileInput.addEventListener("change", async (e) => {
+    clearError();
+    const file = e.target.files?.[0];
+    if (!file) return;
+    fileName.textContent = file.name;
+    state.importedFileName = file.name;
+
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await fetch(`${API_BASE}/api/upload-source`, { method: "POST", body: fd });
+
+      const wb = await readWorkbook(file);
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+      const map = new Map();
+
+      for (const row of rows) {
+        const asin = String(row["ASIN"] || "").trim();
+        const sku = String(row["SKU"] || "").trim();
+        if (!asin && !sku) continue;
+        const key = asin || sku;
+        const label = `${asin || "NO-ASIN"} | ${sku || "NO-SKU"}`;
+        const ranges = parsePromoRanges(row);
+        const expanded = expandRangesToSet(ranges);
+        map.set(key, {
+          label,
+          dates: expanded,
+          meta: {
+            SKU: row["SKU"] || "",
+            ASIN: row["ASIN"] || "",
+            "父ASIN": row["父ASIN"] || "",
+            "品名": row["品名"] || ""
+          }
+        });
+      }
+
+      if (map.size === 0) {
+        setError("未在文件中识别到有效商品记录（需要 ASIN 或 SKU）。");
+        return;
+      }
+
+      saveCurrentProductState();
+      state.recordsByProduct.clear();
+      state.productSim.clear();
+      productSelect.innerHTML = "";
+      for (const [key, val] of map.entries()) {
+        state.recordsByProduct.set(key, val);
+        // 导入时把“今天及未来”的已有促销带入模拟
+        const importedOffsets = Array.from(val.dates)
+          .map((ds) => toOffsetFromToday(ds))
+          .filter((x) => Number.isFinite(x) && x >= 0)
+          .sort((a, b) => a - b);
+        state.productSim.set(key, {
+          selectedOffsets: importedOffsets,
+          recommendedOffsets: []
+          ,
+          selectedDates: importedOffsets.map((off) => dateAddIso(todayIso(), off)),
+          baseDate: todayIso()
+        });
+        const op = document.createElement("option");
+        op.value = key;
+        op.textContent = val.label;
+        productSelect.appendChild(op);
+      }
+      productSelect.disabled = false;
+      state.selectedKey = productSelect.value || map.keys().next().value || "";
+      productSelect.value = state.selectedKey;
+      loadProductState(state.selectedKey);
+      await saveSharedStateToServer();
+      await recalc({ recommend: false });
+      renderHistoryPanel();
+    } catch (err) {
+      setError(`导入失败：${err.message || err}`);
+    }
+  });
+
+  recommendBtn.addEventListener("click", async () => {
+    // 推荐应基于当前模式重新生成，避免受上一次模式结果影响
+    state.selectedOffsets.clear();
+    state.recommendedOffsets.clear();
+    saveCurrentProductState();
+    await recalc({ recommend: true });
+  });
+
+  clearBtn.addEventListener("click", async () => {
+    state.selectedOffsets.clear();
+    state.recommendedOffsets.clear();
+    saveCurrentProductState();
+    await recalc({ recommend: false });
+  });
+
+  futureDaysInput.addEventListener("change", async () => {
+    await recalc({ recommend: false });
+  });
+
+  productSelect.addEventListener("change", async () => {
+    if (state.loading) return;
+    saveCurrentProductState();
+    state.selectedKey = productSelect.value;
+    loadProductState(state.selectedKey);
+    await recalc({ recommend: false });
+    renderHistoryPanel();
+  });
+
+  modeSelect.addEventListener("change", () => {
+    const isCustom = modeSelect.value === "custom";
+    customStartWrap.style.display = isCustom ? "flex" : "none";
+    customEndWrap.style.display = isCustom ? "flex" : "none";
+  });
+
+  saveBtn.addEventListener("click", () => {
+    saveCurrentProductState();
+    const payload = {
+      futureDays: Number(futureDaysInput.value) || 90,
+      mode: modeSelect.value,
+      customStart: customStartInput.value,
+      customEnd: customEndInput.value,
+      selectedKey: state.selectedKey,
+      productSim: Array.from(state.productSim.entries()),
+    };
+    localStorage.setItem("discount_sim_state_v1", JSON.stringify(payload));
+    violationText.textContent = "已保存当前模拟数据。";
+    saveSharedStateToServer().catch(() => {});
+  });
+
+  exportBtn.addEventListener("click", () => {
+    if (state.recordsByProduct.size === 0) {
+      setError("当前没有可导出的模拟数据。");
+      return;
+    }
+    saveCurrentProductState();
+
+    function toMDY(iso) {
+      const [y, m, d] = iso.split("-").map(Number);
+      return `${m}/${d}/${y}`;
+    }
+    function offsetsToRanges(offsets, baseDate) {
+      const sorted = [...offsets].sort((a, b) => a - b);
+      if (sorted.length === 0) return [];
+      const ranges = [];
+      let start = sorted[0];
+      let prev = sorted[0];
+      for (let i = 1; i < sorted.length; i++) {
+        const cur = sorted[i];
+        if (cur === prev + 1) {
+          prev = cur;
+          continue;
+        }
+        ranges.push([start, prev]);
+        start = cur;
+        prev = cur;
+      }
+      ranges.push([start, prev]);
+      return ranges.map(([s, e]) => {
+        const ds = new Date(baseDate);
+        ds.setDate(ds.getDate() + s);
+        const de = new Date(baseDate);
+        de.setDate(de.getDate() + e);
+        const sIso = `${ds.getFullYear()}-${String(ds.getMonth() + 1).padStart(2, "0")}-${String(ds.getDate()).padStart(2, "0")}`;
+        const eIso = `${de.getFullYear()}-${String(de.getMonth() + 1).padStart(2, "0")}-${String(de.getDate()).padStart(2, "0")}`;
+        return [toMDY(sIso), toMDY(eIso)];
+      });
+    }
+
+    const baseDate = new Date();
+    const exportRows = [];
+    let maxPairCount = 0;
+
+    for (const [key, product] of state.recordsByProduct.entries()) {
+      const saved = state.productSim.get(key);
+      const offsets = saved?.selectedOffsets || [];
+      if (!offsets.length) continue;
+      const ranges = offsetsToRanges(offsets, baseDate);
+      if (ranges.length > maxPairCount) maxPairCount = ranges.length;
+      exportRows.push({ key, product, ranges });
+    }
+
+    if (exportRows.length === 0) {
+      setError("没有可导出的促销日期，请先在日历中选择促销日。");
+      return;
+    }
+
+    const cappedPairCount = Math.min(maxPairCount, 50); // 防止极端列数过大
+    const headers = ["SKU", "ASIN", "父ASIN", "品名"];
+    const startCols = [];
+    const endCols = [];
+    for (let i = 1; i <= cappedPairCount; i++) {
+      startCols.push(`促销${i}`);
+      endCols.push(`Unnamed: ${5 + (i - 1) * 2}`);
+      headers.push(startCols[i - 1], endCols[i - 1]);
+    }
+
+    const flatRows = [];
+    for (const item of exportRows) {
+      const { product, ranges } = item;
+      const row = {};
+      for (const h of headers) row[h] = "";
+      row["SKU"] = product.meta?.SKU || "";
+      row["ASIN"] = product.meta?.ASIN || "";
+      row["父ASIN"] = product.meta?.["父ASIN"] || "";
+      row["品名"] = product.meta?.["品名"] || "";
+      for (let i = 0; i < cappedPairCount; i++) {
+        const r = ranges[i];
+        row[startCols[i]] = r ? r[0] : "";
+        row[endCols[i]] = r ? r[1] : "";
+      }
+      flatRows.push(row);
+    }
+
+    const ws = XLSX.utils.json_to_sheet(flatRows, { header: headers });
+    // 标题合并：每组促销起止列做表头合并
+    ws["!merges"] = [];
+    for (let i = 0; i < cappedPairCount; i++) {
+      const c1 = 4 + i * 2;
+      const c2 = c1 + 1;
+      const addr2 = XLSX.utils.encode_cell({ r: 0, c: c2 });
+      ws[addr2] = { t: "s", v: "" };
+      ws["!merges"].push({ s: { r: 0, c: c1 }, e: { r: 0, c: c2 } });
+    }
+
+    // 合并视图：把每组 开始/结束 合并为一列，便于阅读
+    const mergedHeaders = ["SKU", "ASIN", "父ASIN", "品名"];
+    for (let i = 1; i <= cappedPairCount; i++) mergedHeaders.push(`促销${i}`);
+    const mergedRows = flatRows.map((r) => {
+      const out = {
+        "SKU": r["SKU"] || "",
+        "ASIN": r["ASIN"] || "",
+        "父ASIN": r["父ASIN"] || "",
+        "品名": r["品名"] || "",
+      };
+      for (let i = 1; i <= cappedPairCount; i++) {
+        const sCol = `促销${i}`;
+        const eCol = `Unnamed: ${5 + (i - 1) * 2}`;
+        const s = r[sCol] || "";
+        const e = r[eCol] || "";
+        out[sCol] = (s && e) ? `${s} ~ ${e}` : (s || e || "");
+      }
+      return out;
+    });
+    const wsMerged = XLSX.utils.json_to_sheet(mergedRows, { header: mergedHeaders });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "模板格式");
+    XLSX.utils.book_append_sheet(wb, wsMerged, "合并视图");
+    const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 16);
+    XLSX.writeFile(wb, `促销记录_模拟导出_${ts}.xlsx`);
+  });
+
+  async function loadFeishuConfig() {
+    try {
+      const resp = await fetch(`${API_BASE}/api/feishu-config`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      feishuAppId.value = data.app_id || "cli_a96465fbf3b65bda";
+      feishuOpenIds.value = (data.open_ids || []).join(",");
+      selectedOpenIdSet = new Set(data.open_ids || []);
+      await autoLoadFeishuUsers();
+      feishuEnabled.value = data.enabled ? "true" : "false";
+      if (data.has_secret) {
+        feishuAppSecret.placeholder = "已保存，留空表示不修改";
+      }
+    } catch (_) {}
+  }
+
+  async function persistFeishuConfig() {
+    const openIds = feishuOpenIds.value
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean);
+    const payload = {
+      enabled: feishuEnabled.value === "true",
+      app_id: (feishuAppId.value || "").trim(),
+      app_secret: (feishuAppSecret.value || "").trim(),
+      open_ids: openIds,
+    };
+    const resp = await fetch(`${API_BASE}/api/feishu-config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await parseApiResponse(resp);
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+    feishuAppSecret.value = "";
+    return data;
+  }
+
+  saveFeishuBtn.addEventListener("click", async () => {
+    setFeishuTip("");
+    try {
+      await persistFeishuConfig();
+      setFeishuTip("飞书配置已保存。");
+    } catch (err) {
+      setFeishuTip(`保存飞书配置失败：${err.message || err}`);
+    }
+  });
+
+  async function autoLoadFeishuUsers() {
+    setFeishuTip("");
+    memberPanel.innerHTML = "";
+    try {
+      const resp = await fetch(`${API_BASE}/api/feishu/scope-users`);
+      const data = await parseApiResponse(resp);
+      if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+      const items = data.items || [];
+      if (!items.length) {
+        setFeishuTip("应用可见范围内暂无成员。");
+        return;
+      }
+      const selected = new Set(selectedOpenIdSet);
+      for (const u of items) {
+        const oid = u.open_id || "";
+        if (!oid) continue;
+        const row = document.createElement("label");
+        row.className = "member-item";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = oid;
+        const name = (u.name || u.en_name || "成员").trim();
+        cb.checked = selected.has(oid);
+        cb.addEventListener("change", () => {
+          if (cb.checked) selectedOpenIdSet.add(oid);
+          else selectedOpenIdSet.delete(oid);
+          syncOpenIdsFromSet();
+        });
+        let avatar;
+        const avatarSrc = (u.avatar || "").trim();
+        if (avatarSrc) {
+          const img = document.createElement("img");
+          img.className = "member-avatar";
+          img.src = avatarSrc;
+          img.alt = "avatar";
+          img.onerror = () => {
+            const fb = document.createElement("span");
+            fb.className = "member-avatar-fallback";
+            fb.textContent = name ? name[0] : "人";
+            img.replaceWith(fb);
+          };
+          avatar = img;
+        } else {
+          const fb = document.createElement("span");
+          fb.className = "member-avatar-fallback";
+          fb.textContent = name ? name[0] : "人";
+          avatar = fb;
+        }
+        const span = document.createElement("span");
+        span.textContent = name;
+        row.appendChild(cb);
+        row.appendChild(avatar);
+        row.appendChild(span);
+        memberPanel.appendChild(row);
+      }
+      syncOpenIdsFromSet();
+      setFeishuTip(`已自动加载成员：${items.length} 人（可多选）。`);
+    } catch (err) {
+      setFeishuTip(`加载成员失败：${err.message || err}`);
+    }
+  }
+  memberTrigger.addEventListener("click", () => {
+    positionMemberPanel();
+    memberPanel.classList.toggle("show");
+  });
+  window.addEventListener("resize", () => {
+    if (memberPanel.classList.contains("show")) positionMemberPanel();
+  });
+  window.addEventListener("scroll", () => {
+    if (memberPanel.classList.contains("show")) positionMemberPanel();
+  }, true);
+  document.addEventListener("click", (e) => {
+    if (!memberDropdown.contains(e.target)) {
+      memberPanel.classList.remove("show");
+    }
+  });
+
+  sendFeishuBtn.addEventListener("click", async () => {
+    setFeishuTip("");
+    try {
+      await persistFeishuConfig();
+      const resp = await fetch(`${API_BASE}/api/reminders/send-now`, { method: "POST" });
+      const data = await resp.json();
+      if (!resp.ok || data.ok === false) {
+        throw new Error(data.message || `HTTP ${resp.status}`);
+      }
+      setFeishuTip(`发送完成：成功 ${data.sent || 0}，跳过 ${data.skipped || 0}。`);
+    } catch (err) {
+      setFeishuTip(`发送失败：${err.message || err}`);
+    }
+  });
+
+  previewFeishuBtn.addEventListener("click", async () => {
+    feishuPreview.innerHTML = "";
+    try {
+      const resp = await fetch(`${API_BASE}/api/reminders/preview`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const rows = await resp.json();
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "tip";
+        empty.textContent = "暂无提醒计划。";
+        feishuPreview.appendChild(empty);
+        return;
+      }
+      for (const row of rows) {
+        const group = document.createElement("div");
+        group.className = "preview-group";
+        const head = document.createElement("div");
+        head.className = "preview-head";
+        const title = document.createElement("div");
+        title.className = "preview-title";
+        title.textContent = `提醒 ${row.remind_date} · 折扣 ${row.promo_start} ~ ${row.promo_end}`;
+        const badge = document.createElement("div");
+        badge.className = "preview-badge";
+        badge.textContent = `${(row.items || []).length} 个ASIN`;
+        head.appendChild(title);
+        head.appendChild(badge);
+        group.appendChild(head);
+
+        const list = document.createElement("div");
+        list.className = "preview-list";
+        for (const item of (row.items || [])) {
+          const one = document.createElement("div");
+          one.className = "preview-item";
+          one.textContent = `${item.asin || "-"} ｜ ${item.sku || "-"} ｜ ${item.start_date} ~ ${item.end_date}`;
+          list.appendChild(one);
+        }
+        group.appendChild(list);
+        head.addEventListener("click", () => {
+          list.style.display = list.style.display === "none" ? "grid" : "none";
+        });
+        feishuPreview.appendChild(group);
+      }
+    } catch (err) {
+      const errBox = document.createElement("div");
+      errBox.className = "error";
+      errBox.textContent = `预览失败：${err.message || err}`;
+      feishuPreview.appendChild(errBox);
+    }
+  });
+
+  openFeishuModalBtn.addEventListener("click", openFeishuModal);
+  openFeishuModalBtn.addEventListener("click", autoLoadFeishuUsers);
+  closeFeishuModalBtn.addEventListener("click", closeFeishuModal);
+  feishuModal.addEventListener("click", (e) => {
+    if (e.target === feishuModal) closeFeishuModal();
+  });
+
+  // 恢复上次保存
+  try {
+    const raw = localStorage.getItem("discount_sim_state_v1");
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (saved.futureDays) futureDaysInput.value = String(saved.futureDays);
+      if (saved.mode) modeSelect.value = saved.mode;
+      if (saved.customStart != null) customStartInput.value = String(saved.customStart);
+      if (saved.customEnd != null) customEndInput.value = String(saved.customEnd);
+      if (Array.isArray(saved.productSim)) {
+        state.productSim = new Map(saved.productSim);
+      }
+    }
+  } catch (_) {}
+
+  // 页面加载时优先恢复后端共享数据（局域网共用）
+  (async () => {
+    try {
+      await loadFeishuConfig();
+      const resp = await fetch(`${API_BASE}/api/shared-state`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data.records) && data.records.length) {
+          if (data.future_days) futureDaysInput.value = String(data.future_days);
+          if (data.mode) modeSelect.value = data.mode;
+          if (data.custom_start != null) customStartInput.value = String(data.custom_start);
+          if (data.custom_end != null) customEndInput.value = String(data.custom_end);
+          hydrateFromSharedState(data);
+          migrateFutureToHistoryAllProducts();
+          await recalc({ recommend: false });
+          renderHistoryPanel();
+          await saveSharedStateToServer();
+        }
+      }
+    } catch (_) {}
+  })();
+
+  renderCalendar();
+  renderHistoryPanel();
+</script>
+</body>
+</html>
