@@ -110,6 +110,19 @@ def _infer_discount_strength(
     return None
 
 
+def _clean_discount_strength(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if re.search(r"\b(off|qualify|coupon)\b", text, re.IGNORECASE):
+        return None
+    match = re.fullmatch(r"(-?\d+%)", text)
+    if not match:
+        return None
+    normalized = match.group(1)
+    return normalized if normalized.startswith("-") else f"-{normalized}"
+
+
 def _normalize_image_url(value: str | None) -> str | None:
     if not value:
         return None
@@ -187,7 +200,6 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
             html,
             [
                 r'"messaging"\s*:\s*\{\s*"content"\s*:\s*\{\s*"fragments"\s*:\s*\[\s*\{\s*"text"\s*:\s*"([^"]*deal)"',
-                r'"label"\s*:\s*\{\s*"content"\s*:\s*\{\s*"fragments"\s*:\s*\[\s*\{\s*"text"\s*:\s*"(\d+%\s+off)"',
             ],
         )
 
@@ -213,6 +225,7 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
             r"\b(-\d+%)\b",
         ],
     )
+    discount_strength = _clean_discount_strength(discount_strength)
 
     discount_price = _normalize_price(
         _first_match(
@@ -317,6 +330,7 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
             typical_price,
             regular_price,
         )
+    discount_strength = _clean_discount_strength(discount_strength)
 
     color = _extract_selected_variant_from_twister(html) or _first_match(
         html,

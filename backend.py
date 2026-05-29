@@ -736,6 +736,19 @@ def _infer_discount_strength(
     return None
 
 
+def _clean_discount_strength(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if re.search(r"\b(off|qualify|coupon)\b", text, re.IGNORECASE):
+        return None
+    match = re.fullmatch(r"(-?\d+%)", text)
+    if not match:
+        return None
+    normalized = match.group(1)
+    return normalized if normalized.startswith("-") else f"-{normalized}"
+
+
 def _resolve_asin_monitor_image_url(row: dict) -> str:
     image_url = str(row.get("image_url", "") or "").strip()
     if image_url:
@@ -843,6 +856,7 @@ def _parse_amazon_deal_fields(page_html: str) -> dict:
             r'>\s*(-\d+%)\s*<',
         ],
     )
+    discount_strength = _clean_discount_strength(discount_strength)
 
     discount_price = _normalize_price(
         _extract_first_group(
@@ -926,6 +940,7 @@ def _parse_amazon_deal_fields(page_html: str) -> dict:
             ],
             flags=re.IGNORECASE,
         )
+    discount_strength = _clean_discount_strength(discount_strength)
 
     if not list_price:
         list_price = _normalize_price(
@@ -975,6 +990,7 @@ def _parse_amazon_deal_fields(page_html: str) -> dict:
             typical_price,
             regular_price,
         )
+    discount_strength = _clean_discount_strength(discount_strength)
 
     return {
         "discount_type": discount_type,

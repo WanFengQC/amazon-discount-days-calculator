@@ -347,16 +347,52 @@
       color: var(--muted);
       font-size: 13px;
     }
+    .progress-wrap {
+      margin-top: 10px;
+    }
+    .progress-bar-track {
+      width: 100%;
+      height: 8px;
+      background: #e8eff8;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #2f80ed, #56b4f9);
+      transition: width 0.4s ease;
+    }
+    .progress-bar-fill.indeterminate {
+      width: 35%;
+      animation: progress-indeterminate 1.6s ease-in-out infinite;
+    }
+    @keyframes progress-indeterminate {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(370%); }
+    }
+    .progress-text {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #5f7f9d;
+    }
     .monitor-table-wrap {
       margin-top: 12px;
-      overflow: auto;
       border: 1px solid var(--line);
       border-radius: 12px;
       background: #fbfdff;
+      overflow: visible;
+    }
+    .monitor-table-scroll {
+      overflow-x: auto;
+      overflow-y: visible;
+      border-radius: 12px;
     }
     .monitor-table {
       width: 100%;
-      border-collapse: collapse;
+      border-collapse: separate;
+      border-spacing: 0;
       min-width: 1240px;
       font-size: 14px;
       table-layout: auto;
@@ -375,9 +411,30 @@
       background: #eef5ff;
       color: #2d5f97;
       font-weight: 700;
-      position: sticky;
+    }
+    .monitor-sticky-head {
+      position: fixed;
       top: 0;
-      z-index: 1;
+      left: 0;
+      z-index: 40;
+      display: none;
+      overflow: hidden;
+      pointer-events: none;
+      border: 1px solid var(--line);
+      border-bottom: none;
+      border-radius: 12px 12px 0 0;
+      background: #eef5ff;
+      box-shadow: 0 10px 22px rgba(44, 113, 196, 0.14);
+    }
+    .monitor-sticky-head.show {
+      display: block;
+    }
+    .monitor-sticky-head .monitor-table {
+      margin: 0;
+    }
+    .monitor-sticky-head .monitor-table th {
+      background: #eef5ff;
+      box-shadow: inset 0 -1px 0 #dce8f7;
     }
     .monitor-table td:first-child,
     .monitor-table td:nth-child(2) {
@@ -1013,30 +1070,43 @@
         </div>
       </div>
       <div id="asinMonitorStatus" class="monitor-status">尚未加载监控配置。</div>
+      <div id="asinMonitorProgressWrap" class="progress-wrap" style="display:none;">
+        <div class="progress-bar-track">
+          <div id="asinMonitorProgressBar" class="progress-bar-fill"></div>
+        </div>
+        <div id="asinMonitorProgressText" class="progress-text">准备中...</div>
+      </div>
       <div class="monitor-toolbar">
         <div id="asinMonitorDateLabel" class="monitor-date-label">当前仅显示当天数据。</div>
       </div>
-      <div class="monitor-table-wrap">
-        <table class="monitor-table">
-          <thead>
-            <tr>
-              <th>主图</th>
-              <th>ASIN</th>
-              <th>variant</th>
-              <th>discount_type</th>
-              <th>discount_strength</th>
-              <th>discount_price</th>
-              <th>List Price</th>
-              <th>Typical price</th>
-              <th>Regular Price</th>
-              <th>Prime Member Price</th>
-            </tr>
-          </thead>
-          <tbody id="asinMonitorResults"></tbody>
-        </table>
+      <div id="monitorTableWrap" class="monitor-table-wrap">
+        <div id="monitorTableScroll" class="monitor-table-scroll">
+          <table id="monitorTable" class="monitor-table">
+            <thead id="monitorTableHead">
+              <tr>
+                <th>主图</th>
+                <th>ASIN</th>
+                <th>variant</th>
+                <th>discount_type</th>
+                <th>discount_strength</th>
+                <th>discount_price</th>
+                <th>List Price</th>
+                <th>Typical price</th>
+                <th>Regular Price</th>
+                <th>Prime Member Price</th>
+              </tr>
+            </thead>
+            <tbody id="asinMonitorResults"></tbody>
+          </table>
+        </div>
       </div>
     </section>
   </div>
+</div>
+<div id="monitorStickyHead" class="monitor-sticky-head" aria-hidden="true">
+  <table id="monitorStickyHeadTable" class="monitor-table">
+    <thead id="monitorStickyHeadThead"></thead>
+  </table>
 </div>
 <div id="asinMonitorModal" class="modal-mask">
   <section class="modal-card">
@@ -1205,7 +1275,17 @@
   const asinMonitorDateSelect = document.getElementById("asinMonitorDateSelect");
   const asinMonitorDateLabel = document.getElementById("asinMonitorDateLabel");
   const asinMonitorStatus = document.getElementById("asinMonitorStatus");
+  const asinMonitorProgressWrap = document.getElementById("asinMonitorProgressWrap");
+  const asinMonitorProgressBar = document.getElementById("asinMonitorProgressBar");
+  const asinMonitorProgressText = document.getElementById("asinMonitorProgressText");
   const asinMonitorResults = document.getElementById("asinMonitorResults");
+  const monitorTableWrap = document.getElementById("monitorTableWrap");
+  const monitorTableScroll = document.getElementById("monitorTableScroll");
+  const monitorTable = document.getElementById("monitorTable");
+  const monitorTableHead = document.getElementById("monitorTableHead");
+  const monitorStickyHead = document.getElementById("monitorStickyHead");
+  const monitorStickyHeadTable = document.getElementById("monitorStickyHeadTable");
+  const monitorStickyHeadThead = document.getElementById("monitorStickyHeadThead");
   const openFeishuModalBtn = document.getElementById("openFeishuModalBtn");
   const closeFeishuModalBtn = document.getElementById("closeFeishuModalBtn");
   const feishuModal = document.getElementById("feishuModal");
@@ -1235,6 +1315,7 @@
   const asinMonitorTrendState = {
     asin: "",
     fieldKey: "discount_price",
+    showAll: false,
   };
   function todayIso() {
     const t = new Date();
@@ -1628,6 +1709,7 @@
     if (page === "calculator") {
       updateMarkerFloatPosition();
     }
+    requestAnimationFrame(syncMonitorStickyHeader);
   }
   function parseAsinMonitorInput() {
     return (asinMonitorInput.value || "")
@@ -1687,6 +1769,7 @@
       td.textContent = "暂无抓取结果。";
       tr.appendChild(td);
       asinMonitorResults.appendChild(tr);
+      requestAnimationFrame(syncMonitorStickyHeader);
       return;
     }
     for (const row of visibleRows) {
@@ -1755,6 +1838,48 @@
       });
       asinMonitorResults.appendChild(tr);
     }
+    requestAnimationFrame(syncMonitorStickyHeader);
+  }
+  function syncMonitorStickyHeader() {
+    if (!monitorTableWrap || !monitorTableScroll || !monitorTable || !monitorTableHead || !monitorStickyHead || !monitorStickyHeadTable || !monitorStickyHeadThead) {
+      return;
+    }
+    const sourceRow = monitorTableHead.querySelector("tr");
+    if (!sourceRow) {
+      monitorStickyHead.classList.remove("show");
+      monitorStickyHeadThead.innerHTML = "";
+      return;
+    }
+    if (monitorStickyHeadThead.innerHTML.trim() !== sourceRow.outerHTML.trim()) {
+      monitorStickyHeadThead.innerHTML = sourceRow.outerHTML;
+    }
+    const sourceThs = Array.from(sourceRow.children);
+    const cloneThs = Array.from(monitorStickyHeadThead.querySelectorAll("th"));
+    sourceThs.forEach((th, index) => {
+      const width = th.getBoundingClientRect().width;
+      const clone = cloneThs[index];
+      if (!clone) return;
+      clone.style.width = `${width}px`;
+      clone.style.minWidth = `${width}px`;
+      clone.style.maxWidth = `${width}px`;
+      clone.style.padding = getComputedStyle(th).padding;
+    });
+    monitorStickyHeadTable.style.width = `${monitorTable.getBoundingClientRect().width}px`;
+    monitorStickyHeadTable.style.transform = `translateX(${-monitorTableScroll.scrollLeft}px)`;
+    const wrapRect = monitorTableWrap.getBoundingClientRect();
+    const tableRect = monitorTable.getBoundingClientRect();
+    const headerHeight = sourceRow.getBoundingClientRect().height || 0;
+    const shouldShow = monitorPage.classList.contains("active")
+      && wrapRect.width > 0
+      && wrapRect.top <= 0
+      && tableRect.bottom > headerHeight;
+    if (!shouldShow) {
+      monitorStickyHead.classList.remove("show");
+      return;
+    }
+    monitorStickyHead.style.left = `${wrapRect.left}px`;
+    monitorStickyHead.style.width = `${wrapRect.width}px`;
+    monitorStickyHead.classList.add("show");
   }
   async function loadAsinMonitorConfig() {
     const resp = await fetch(`${API_BASE}/api/asin-monitor/config`);
@@ -1867,8 +1992,16 @@
     }
     return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date));
   }
-  function renderAsinTrendChart(points) {
-    if (!points.length) {
+  const trendSeriesColors = [
+    { line: "#2f63da", area: "rgba(47, 99, 218, 0.10)", dot: "#2f63da" },
+    { line: "#e07c24", area: "rgba(224, 124, 36, 0.10)", dot: "#e07c24" },
+    { line: "#27ae60", area: "rgba(39, 174, 96, 0.10)", dot: "#27ae60" },
+    { line: "#8e44ad", area: "rgba(142, 68, 173, 0.10)", dot: "#8e44ad" },
+    { line: "#e74c3c", area: "rgba(231, 76, 60, 0.10)", dot: "#e74c3c" },
+  ];
+  function renderAsinTrendChart(allSeries) {
+    const hasData = allSeries.some((s) => s.points.length);
+    if (!hasData) {
       asinMonitorTrendChart.className = "trend-empty";
       asinMonitorTrendChart.textContent = "暂无可用价格趋势数据。";
       disposeAsinTrendChart();
@@ -1878,8 +2011,24 @@
     asinMonitorTrendChart.textContent = "";
     const chart = ensureAsinTrendChart();
     if (!chart) return;
-    const labels = points.map((point) => point.date);
-    const prices = points.map((point) => point.value);
+    const dateSet = new Set();
+    for (const s of allSeries) for (const p of s.points) dateSet.add(p.date);
+    const labels = Array.from(dateSet).sort();
+    const seriesOpts = allSeries.map((s, i) => {
+      const color = trendSeriesColors[i % trendSeriesColors.length];
+      const dataMap = new Map(s.points.map((p) => [p.date, p.value]));
+      return {
+        name: s.label,
+        type: "line",
+        smooth: true,
+        data: labels.map((d) => dataMap.has(d) ? dataMap.get(d) : null),
+        symbol: "circle",
+        symbolSize: 6,
+        lineStyle: { width: 2.4, color: color.line },
+        itemStyle: { color: color.dot },
+        connectNulls: false,
+      };
+    });
     chart.setOption(
       {
         grid: { left: 50, right: 30, top: 52, bottom: 42, containLabel: true },
@@ -1887,12 +2036,12 @@
           trigger: "axis",
           axisPointer: { type: "line", lineStyle: { color: "#c8d7ed", width: 1, type: "dashed" } },
           formatter: (params) => {
-            const item = Array.isArray(params) ? params[0] : params;
-            const index = item?.dataIndex ?? 0;
-            return [
-              `<div>${labels[index] || "-"}</div>`,
-              `${item?.marker || ""} 价格: ${formatTrendPrice(typeof item?.value === "number" ? item.value : null)}`,
-            ].join("<br/>");
+            const lines = [`<div>${params?.[0]?.axisValueLabel || "-"}</div>`];
+            for (const p of (Array.isArray(params) ? params : [params])) {
+              const val = typeof p.value === "number" ? formatTrendPrice(p.value) : "-";
+              lines.push(`${p.marker || ""} ${p.seriesName}: ${val}`);
+            }
+            return lines.join("<br/>");
           },
         },
         xAxis: {
@@ -1908,41 +2057,47 @@
             formatter: (value) => formatTrendPrice(Number(value)),
           },
         },
-        series: [
-          {
-            name: "价格",
-            type: "line",
-            smooth: true,
-            data: prices,
-            symbol: "circle",
-            symbolSize: 6,
-            lineStyle: { width: 2.4, color: "#2f63da" },
-            itemStyle: { color: "#2f63da" },
-            areaStyle: {
-              color: "rgba(47, 99, 218, 0.12)",
-            },
-          },
-        ],
+        series: seriesOpts,
       },
       { notMerge: true }
     );
   }
   function renderAsinMonitorTrend() {
-    const field = asinMonitorPriceFields.find((item) => item.key === asinMonitorTrendState.fieldKey) || asinMonitorPriceFields[0];
-    const points = getAsinTrendPoints(asinMonitorTrendState.asin, asinMonitorTrendState.fieldKey);
-    asinMonitorTrendTitle.textContent = `${asinMonitorTrendState.asin || "-"} · ${field.label} 趋势`;
-    if (points.length) {
-      const first = points[0];
-      const last = points[points.length - 1];
-      asinMonitorTrendSubtitle.textContent = `${first.date} ~ ${last.date}，共 ${points.length} 个采样点，最新价 ${formatTrendPrice(last.value)}`;
+    const asin = asinMonitorTrendState.asin;
+    const showAll = asinMonitorTrendState.showAll;
+    asinMonitorTrendTitle.textContent = `${asin || "-"} · 价格趋势`;
+    let allSeries = [];
+    if (showAll) {
+      allSeries = asinMonitorPriceFields.map((f) => ({
+        label: f.label,
+        points: getAsinTrendPoints(asin, f.key),
+      }));
+      const totalPoints = allSeries.reduce((sum, s) => sum + s.points.length, 0);
+      const validSeries = allSeries.filter((s) => s.points.length);
+      if (validSeries.length) {
+        const allDates = validSeries.flatMap((s) => s.points.map((p) => p.date)).sort();
+        asinMonitorTrendSubtitle.textContent = `${allDates[0]} ~ ${allDates[allDates.length - 1]}，${validSeries.length} 条线，共 ${totalPoints} 个采样点`;
+      } else {
+        asinMonitorTrendSubtitle.textContent = "当前暂无可用价格数据。";
+      }
     } else {
-      asinMonitorTrendSubtitle.textContent = "当前暂无可用价格数据。";
+      const field = asinMonitorPriceFields.find((item) => item.key === asinMonitorTrendState.fieldKey) || asinMonitorPriceFields[0];
+      const points = getAsinTrendPoints(asin, field.key);
+      allSeries = [{ label: field.label, points }];
+      if (points.length) {
+        const first = points[0];
+        const last = points[points.length - 1];
+        asinMonitorTrendSubtitle.textContent = `${first.date} ~ ${last.date}，共 ${points.length} 个采样点，最新价 ${formatTrendPrice(last.value)}`;
+      } else {
+        asinMonitorTrendSubtitle.textContent = "当前暂无可用价格数据。";
+      }
     }
-    renderAsinTrendChart(points);
+    renderAsinTrendChart(allSeries);
   }
   function openAsinMonitorTrend(asin, fieldKey) {
     asinMonitorTrendState.asin = String(asin || "").trim().toUpperCase();
     asinMonitorTrendState.fieldKey = fieldKey;
+    asinMonitorTrendState.showAll = true;
     asinMonitorTrendModal.classList.add("show");
     renderAsinMonitorTrend();
     requestAnimationFrame(() => resizeAsinTrendChart());
@@ -2692,17 +2847,61 @@
       setAsinMonitorStatus(`刷新结果失败：${err.message || err}`);
     }
   });
+  function showProgress(text) {
+    asinMonitorProgressWrap.style.display = "block";
+    asinMonitorProgressBar.className = "progress-bar-fill indeterminate";
+    asinMonitorProgressBar.style.width = "";
+    asinMonitorProgressText.textContent = text || "处理中...";
+  }
+  function setProgressPercent(pct, text) {
+    asinMonitorProgressBar.className = "progress-bar-fill";
+    asinMonitorProgressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+    if (text) asinMonitorProgressText.textContent = text;
+  }
+  function hideProgress() {
+    asinMonitorProgressWrap.style.display = "none";
+    asinMonitorProgressBar.className = "progress-bar-fill";
+    asinMonitorProgressBar.style.width = "0%";
+  }
   runAsinMonitorBtn.addEventListener("click", async () => {
     try {
       await saveAsinMonitorConfig();
+      const asins = parseAsinMonitorInput();
+      const total = asins.length || 1;
+      showProgress("正在连接 Amazon，准备抓取...");
       setAsinMonitorStatus("正在抓取今天的数据，这一步可能需要几十秒...");
+      runAsinMonitorBtn.disabled = true;
+      // 模拟阶段性进度
+      let progressPct = 5;
+      const progressSteps = [
+        { pct: 10, text: "正在加载页面..." },
+        { pct: 30, text: "正在解析商品数据..." },
+        { pct: 55, text: "正在提取价格信息..." },
+        { pct: 75, text: "正在整理抓取结果..." },
+        { pct: 90, text: "即将完成..." },
+      ];
+      let stepIdx = 0;
+      const timer = setInterval(() => {
+        if (stepIdx < progressSteps.length) {
+          const step = progressSteps[stepIdx];
+          setProgressPercent(step.pct, step.text);
+          stepIdx++;
+        }
+      }, 3000);
       const resp = await fetch(`${API_BASE}/api/asin-monitor/run-now`, { method: "POST" });
+      clearInterval(timer);
       const data = await parseApiResponse(resp);
       if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+      setProgressPercent(100, "抓取完成！");
+      await new Promise((r) => setTimeout(r, 600));
       renderAsinMonitorResults(data.results || []);
       setAsinMonitorStatus(`抓取完成：本次处理 ${data.count || 0} 个 ASIN。`);
+      hideProgress();
     } catch (err) {
+      hideProgress();
       setAsinMonitorStatus(`立即抓取失败：${err.message || err}`);
+    } finally {
+      runAsinMonitorBtn.disabled = false;
     }
   });
   pageTabCalculator.addEventListener("click", () => switchPage("calculator"));
@@ -2765,7 +2964,13 @@
   updateMarkerFloatPosition();
   window.addEventListener("resize", updateMarkerFloatPosition);
   window.addEventListener("resize", resizeAsinTrendChart);
+  window.addEventListener("resize", syncMonitorStickyHeader);
   window.addEventListener("scroll", updateMarkerFloatPosition, { passive: true });
+  window.addEventListener("scroll", syncMonitorStickyHeader, { passive: true });
+  if (monitorTableScroll) {
+    monitorTableScroll.addEventListener("scroll", syncMonitorStickyHeader, { passive: true });
+  }
+  requestAnimationFrame(syncMonitorStickyHeader);
 </script>
 </body>
 </html>
