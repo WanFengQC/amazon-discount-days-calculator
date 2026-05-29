@@ -6,6 +6,7 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY backend.py /app/backend.py
+COPY amazon_deal_extractor.py /app/amazon_deal_extractor.py
 COPY index.html /app/index.html
 
 EXPOSE 8010

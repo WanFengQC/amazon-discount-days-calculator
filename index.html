@@ -32,18 +32,58 @@
       margin: 24px auto 40px;
       padding: 0 16px;
     }
+    #monitorPage {
+      width: min(1380px, calc(100vw - 32px));
+      margin-left: 50%;
+      transform: translateX(-50%);
+    }
 
     .title {
       font-size: 28px;
       font-weight: 700;
       margin: 4px 0 8px;
       color: #1e5fae;
+      text-align: center;
     }
 
     .subtitle {
       margin: 0 0 20px;
       color: var(--muted);
+      text-align: center;
     }
+    .page-switch {
+      display: flex;
+      gap: 10px;
+      margin: 0 0 18px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .page-tab {
+      min-width: 148px;
+      height: 40px;
+      border-radius: 999px;
+      border: 1px solid #bed9f7;
+      background: #edf5ff;
+      color: #1f5ea8;
+      font-weight: 700;
+      letter-spacing: 0;
+      font-kerning: none;
+      font-variant-ligatures: none;
+    }
+    .tab-latin {
+      font-family: "Segoe UI", Arial, sans-serif;
+      letter-spacing: 0;
+      font-kerning: none;
+      font-variant-ligatures: none;
+    }
+    .page-tab.active {
+      background: linear-gradient(180deg, #2f80ed 0%, #2a72d4 100%);
+      border-color: #2f80ed;
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(47, 128, 237, 0.18);
+    }
+    .app-page { display: none; }
+    .app-page.active { display: block; }
 
     .card {
       background: var(--card);
@@ -157,6 +197,51 @@
       color: #1f5ea8;
       border-color: #bed9f7;
     }
+    .future-card {
+      overflow: visible;
+    }
+    .marker-float {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 30;
+      pointer-events: auto;
+    }
+    .marker-btn {
+      pointer-events: auto;
+      width: 56px;
+      height: 56px;
+      border-radius: 999px;
+      border: 2px solid transparent;
+      padding: 0;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 18px rgba(35, 85, 140, 0.22);
+    }
+    .marker-btn-pd {
+      background: #2f80ed;
+      border-color: #2f80ed;
+    }
+    .marker-btn-bd {
+      background: #f2994a;
+      border-color: #f2994a;
+    }
+    .marker-btn-pc {
+      background: #6b7f95;
+      border-color: #6b7f95;
+    }
+    .marker-btn-active {
+      border-color: #ffffff !important;
+      box-shadow: 0 0 0 3px rgba(47, 128, 237, 0.26), 0 10px 22px rgba(35, 85, 140, 0.3);
+      transform: scale(1.05);
+    }
 
     .actions {
       display: flex;
@@ -164,6 +249,349 @@
       align-items: end;
       flex-wrap: wrap;
       margin-top: 8px;
+    }
+    .monitor-grid {
+      display: grid;
+      grid-template-columns: 2fr repeat(6, minmax(120px, 1fr));
+      gap: 12px;
+    }
+    .monitor-config-layout {
+      display: grid;
+      grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+    .monitor-config-main {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+    .monitor-config-side {
+      display: grid;
+      gap: 12px;
+    }
+    .monitor-config-fields {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+    .monitor-config-advanced-toggle {
+      grid-column: 1 / -1;
+      align-self: start;
+      display: flex;
+      width: 100%;
+      justify-content: flex-end;
+      align-items: flex-end;
+      margin-top: -2px;
+    }
+    .monitor-config-advanced-toggle details {
+      display: inline-block;
+      margin-left: auto;
+    }
+    .monitor-config-advanced-toggle summary {
+      cursor: pointer;
+      list-style: none;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1f5ea8;
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .monitor-config-advanced-toggle summary::-webkit-details-marker {
+      display: none;
+    }
+    .monitor-config-advanced-toggle summary::after {
+      content: "▾";
+      font-size: 12px;
+      color: #5e7fa3;
+      transition: transform 0.18s ease;
+    }
+    .monitor-config-advanced-toggle details[open] summary::after {
+      transform: rotate(180deg);
+    }
+    .monitor-config-advanced-fields {
+      grid-column: 1 / -1;
+      display: none;
+    }
+    .monitor-config-advanced-fields.show {
+      display: block;
+    }
+    .monitor-config-advanced-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .monitor-field-span-3 {
+      grid-column: 1 / -1;
+    }
+    .monitor-textarea {
+      min-height: 112px;
+      height: 100%;
+      flex: 1;
+      resize: vertical;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #b9d5f3;
+      background: #f8fbff;
+      color: var(--text);
+      font-size: 14px;
+      font-family: Consolas, "Courier New", monospace;
+    }
+    .monitor-status {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .monitor-table-wrap {
+      margin-top: 12px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfdff;
+    }
+    .monitor-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1240px;
+      font-size: 14px;
+      table-layout: auto;
+    }
+    .monitor-table th,
+    .monitor-table td {
+      padding: 14px 12px;
+      border-bottom: 1px solid #dce8f7;
+      text-align: center;
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .monitor-table th {
+      background: #eef5ff;
+      color: #2d5f97;
+      font-weight: 700;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .monitor-table td:first-child,
+    .monitor-table td:nth-child(2) {
+      overflow: visible;
+      text-overflow: clip;
+    }
+    .monitor-table td button.secondary {
+      font-size: 14px;
+      min-height: 40px;
+      padding: 0 14px;
+    }
+    .monitor-toolbar {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .monitor-date-switch {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+    .monitor-date-switch select {
+      min-width: 160px;
+    }
+    .monitor-date-label {
+      font-size: 13px;
+      color: #5f7f9d;
+    }
+    .monitor-asin-link {
+      color: #1f5ea8;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .monitor-asin-link:hover {
+      text-decoration: underline;
+    }
+    .monitor-image-cell {
+      width: 92px;
+    }
+    .monitor-image-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 68px;
+      height: 68px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #d7e5f6;
+      background: #fff;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+    }
+    .monitor-image-thumb {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #fff;
+    }
+    .monitor-image-empty {
+      color: #8aa2be;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .monitor-price-btn {
+      border: none;
+      background: transparent;
+      color: #1f5ea8;
+      font: inherit;
+      font-weight: 700;
+      padding: 0;
+      height: auto;
+      min-height: 0;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .monitor-price-btn:hover {
+      color: #174b87;
+    }
+    .trend-modal-card {
+      width: min(1120px, 100%);
+    }
+    .trend-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .trend-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .trend-actions button.active {
+      background: linear-gradient(180deg, #2f80ed 0%, #2a72d4 100%);
+      border-color: #2f80ed;
+      color: #fff;
+    }
+    .trend-summary {
+      font-size: 13px;
+      color: #5f7f9d;
+      margin-bottom: 12px;
+    }
+    .trend-chart-wrap {
+      border: 1px solid #dce8f7;
+      border-radius: 12px;
+      background: #fcfdff;
+      padding: 14px;
+      position: relative;
+    }
+    .trend-chart-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .trend-empty {
+      min-height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #7b93af;
+      font-size: 14px;
+    }
+    .trend-tooltip {
+      position: absolute;
+      pointer-events: none;
+      z-index: 2;
+      min-width: 120px;
+      max-width: 220px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid #c8dcf5;
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 10px 24px rgba(31, 74, 124, 0.18);
+      color: #1b3f6d;
+      font-size: 12px;
+      line-height: 1.45;
+      transform: translate(-50%, calc(-100% - 12px));
+      opacity: 0;
+      transition: opacity 0.12s ease;
+      white-space: nowrap;
+    }
+    .trend-tooltip.show {
+      opacity: 1;
+    }
+    .trend-tooltip-date {
+      color: #5f7f9d;
+    }
+    .trend-tooltip-value {
+      font-weight: 700;
+      color: #1f5ea8;
+    }
+    .trend-slider-wrap {
+      margin-top: 14px;
+      display: grid;
+      gap: 8px;
+    }
+    .trend-slider-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      color: #5f7f9d;
+    }
+    .trend-slider {
+      width: 100%;
+      accent-color: #2f80ed;
+    }
+    .trend-legend {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #355d8e;
+      margin-top: 10px;
+    }
+    .trend-legend-line {
+      width: 18px;
+      height: 3px;
+      border-radius: 999px;
+      background: #2f80ed;
+    }
+    .monitor-pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #eaf2ff;
+      color: #285f9a;
+    }
+    .monitor-pill-ready {
+      background: #e6f7ef;
+      color: #1b8f5a;
+    }
+    .monitor-pill-blocked,
+    .monitor-pill-error {
+      background: #ffe9e9;
+      color: #d94848;
+    }
+    .monitor-pill-no_offer,
+    .monitor-pill-unknown {
+      background: #fff3df;
+      color: #b06b00;
     }
 
     .week-header {
@@ -205,6 +633,18 @@
     .day.selected {
       background: #d9ebff;
       border-color: #5c97da;
+    }
+    .day.marker-bd {
+      background: #ffe8cc;
+      border-color: #ffb25f;
+    }
+    .day.marker-pd {
+      background: #d9ebff;
+      border-color: #5c97da;
+    }
+    .day.marker-pc {
+      background: #eef3fa;
+      border-color: #ccd9ea;
     }
     .day.recommended { box-shadow: inset 0 0 0 2px #2f80ed; }
     .day.violation {
@@ -278,6 +718,21 @@
       background: #e0efff;
       border-color: #9fc3ed;
       color: #1d4d84;
+    }
+    .day.marker-bd .tag {
+      background: #fff1df;
+      border-color: #ffc886;
+      color: #8a4d00;
+    }
+    .day.marker-pd .tag {
+      background: #e0efff;
+      border-color: #9fc3ed;
+      color: #1d4d84;
+    }
+    .day.marker-pc .tag {
+      background: #f4f7fc;
+      border-color: #d7e2f0;
+      color: #5c718b;
     }
     .day.recommended .tag {
       background: #e7f1ff;
@@ -459,11 +914,26 @@
 
     @media (max-width: 850px) {
       .grid { grid-template-columns: 1fr 1fr; }
+      .monitor-config-layout { grid-template-columns: 1fr; }
+      .monitor-config-fields { grid-template-columns: 1fr 1fr; }
+      .monitor-config-advanced-grid { grid-template-columns: 1fr 1fr; }
     }
 
     @media (max-width: 520px) {
       .grid { grid-template-columns: 1fr; }
       .calendar, .week-header { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .monitor-config-fields { grid-template-columns: 1fr; }
+      .monitor-config-advanced-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 980px) {
+      .marker-float {
+        right: 10px !important;
+      }
+      .marker-btn {
+        width: 48px;
+        height: 48px;
+        font-size: 11px;
+      }
     }
   </style>
 </head>
@@ -471,7 +941,12 @@
 <div class="container">
   <h1 class="title">亚马逊折扣天数计算器</h1>
   <p class="subtitle">规则：任意 90 天窗口内折扣日必须小于 45（最多 44 天）</p>
+  <div class="page-switch">
+    <button id="pageTabCalculator" type="button" class="page-tab active">折扣天数计算</button>
+    <button id="pageTabMonitor" type="button" class="page-tab"><span class="tab-latin">ASIN</span>每日监控</button>
+  </div>
 
+  <div id="calculatorPage" class="app-page active">
   <section class="card">
     <div class="grid">
       <div class="field">
@@ -498,10 +973,6 @@
         <label>推荐模式</label>
         <select id="modeSelect">
           <option value="even">均匀分布</option>
-          <option value="centered_even">中间优先均匀分布</option>
-          <option value="centered">中间优先</option>
-          <option value="head">头部优先</option>
-          <option value="tail">尾部优先</option>
           <option value="custom">自定义区间均匀分布</option>
         </select>
       </div>
@@ -583,7 +1054,7 @@
     </details>
   </section>
 
-  <section class="card">
+  <section id="futureCard" class="card future-card">
     <div class="tip">未来日历模拟（单点切换折扣日，灰色=当前不可选）</div>
     <div id="violationText" class="tip"></div>
     <div class="week-header">
@@ -597,6 +1068,162 @@
     </div>
     <div id="calendar" class="calendar"></div>
   </section>
+  </div>
+
+  <div id="monitorPage" class="app-page">
+    <section class="card">
+      <div class="tip" style="font-weight:600;color:#2f6fb7;">Amazon ASIN 每日监控</div>
+      <div class="tip" id="asinMonitorSummary" style="margin-top:10px;">尚未加载监控配置。</div>
+      <div class="actions">
+        <button id="openAsinMonitorModalBtn" type="button" class="secondary">监控配置</button>
+        <button id="runAsinMonitorBtn" type="button" class="secondary">立即抓取今天数据</button>
+        <button id="refreshAsinMonitorBtn" type="button" class="secondary">刷新结果</button>
+        <div class="monitor-date-switch">
+          <button id="asinMonitorPrevDateBtn" type="button" class="secondary">上一天</button>
+          <select id="asinMonitorDateSelect"></select>
+          <button id="asinMonitorNextDateBtn" type="button" class="secondary">下一天</button>
+        </div>
+      </div>
+      <div id="asinMonitorStatus" class="monitor-status">尚未加载监控配置。</div>
+      <div class="monitor-toolbar">
+        <div id="asinMonitorDateLabel" class="monitor-date-label">当前仅显示当天数据。</div>
+      </div>
+      <div class="monitor-table-wrap">
+        <table class="monitor-table">
+          <thead>
+            <tr>
+              <th>主图</th>
+              <th>ASIN</th>
+              <th>variant</th>
+              <th>discount_type</th>
+              <th>discount_strength</th>
+              <th>discount_price</th>
+              <th>List Price</th>
+              <th>Typical price</th>
+              <th>Regular Price</th>
+              <th>Prime Member Price</th>
+            </tr>
+          </thead>
+          <tbody id="asinMonitorResults"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="asinMonitorModal" class="modal-mask">
+  <section class="modal-card">
+    <div class="modal-head">
+      <div class="tip" style="font-weight:600;color:#2f6fb7;">ASIN 监控配置</div>
+      <button id="closeAsinMonitorModalBtn" class="close-btn" type="button">×</button>
+    </div>
+    <div class="monitor-config-layout" style="margin-top:10px;">
+      <div class="field monitor-config-main">
+        <label>批量 ASIN（每行一个，或逗号分隔）</label>
+        <textarea id="asinMonitorInput" class="monitor-textarea" placeholder="B0DRHXCWTM&#10;B0B7RCNG2Q"></textarea>
+      </div>
+      <div class="monitor-config-side">
+        <div class="monitor-config-fields">
+          <div class="field">
+            <label>自动执行</label>
+            <select id="asinMonitorEnabled">
+              <option value="true">启用</option>
+              <option value="false">停用</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>每日执行时间</label>
+            <input id="asinMonitorTime" type="time" value="09:00" />
+          </div>
+          <div class="field">
+            <label>美国 ZIP</label>
+            <input id="asinMonitorZip" type="text" value="10001" />
+          </div>
+          <div class="field monitor-config-advanced-toggle">
+            <details id="asinMonitorAdvancedDetails">
+              <summary>高级选项</summary>
+            </details>
+          </div>
+          <div id="asinMonitorAdvancedFields" class="monitor-config-advanced-fields">
+            <div class="monitor-config-advanced-grid">
+              <div class="field">
+                <label>浏览器模式</label>
+                <select id="asinMonitorHeadless">
+                  <option value="true">无头</option>
+                  <option value="false">可见窗口</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>重试间隔秒</label>
+                <input id="asinMonitorRetryDelay" type="number" min="0" max="300" value="20" />
+              </div>
+              <div class="field">
+                <label>重试次数</label>
+                <input id="asinMonitorRetryCount" type="number" min="0" max="5" value="2" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="saveAsinMonitorBtn" type="button" class="secondary">保存监控配置</button>
+    </div>
+  </section>
+</div>
+<div id="asinMonitorLogModal" class="modal-mask">
+  <section class="modal-card">
+    <div class="modal-head">
+      <div class="tip" id="asinMonitorLogTitle" style="font-weight:600;color:#2f6fb7;">抓取日志</div>
+      <button id="closeAsinMonitorLogModalBtn" class="close-btn" type="button">×</button>
+    </div>
+    <div class="field">
+      <label>说明</label>
+      <div id="asinMonitorLogReason" class="preview-item" style="white-space:pre-wrap; line-height:1.5;"></div>
+    </div>
+    <div class="field" style="margin-top:12px;">
+      <label>爬取日志</label>
+      <pre id="asinMonitorLogBody" class="preview-item" style="margin:0; white-space:pre-wrap; line-height:1.5; max-height:420px; overflow:auto;"></pre>
+    </div>
+  </section>
+</div>
+<div id="asinMonitorTrendModal" class="modal-mask">
+  <section class="modal-card trend-modal-card">
+    <div class="modal-head">
+      <div class="tip" id="asinMonitorTrendTitle" style="font-weight:600;color:#2f6fb7;">价格趋势</div>
+      <button id="closeAsinMonitorTrendModalBtn" class="close-btn" type="button">×</button>
+    </div>
+    <div class="trend-toolbar">
+      <div id="asinMonitorTrendSubtitle" class="trend-summary">-</div>
+      <div class="trend-actions">
+        <button id="asinTrendWeekBtn" type="button" class="secondary">最近一周</button>
+        <button id="asinTrendMonthBtn" type="button" class="secondary">最近一月</button>
+        <button id="asinTrendAllBtn" type="button" class="secondary">全部</button>
+      </div>
+    </div>
+    <div class="trend-chart-wrap">
+      <div id="asinMonitorTrendChart" class="trend-empty">暂无可用价格趋势数据。</div>
+      <div id="asinMonitorTrendTooltip" class="trend-tooltip" aria-hidden="true">
+        <div id="asinMonitorTrendTooltipDate" class="trend-tooltip-date"></div>
+        <div id="asinMonitorTrendTooltipValue" class="trend-tooltip-value"></div>
+      </div>
+      <div class="trend-legend">
+        <span class="trend-legend-line"></span>
+        <span id="asinMonitorTrendLegend">价格趋势</span>
+      </div>
+    </div>
+    <div class="trend-slider-wrap">
+      <div class="trend-slider-head">
+        <label for="asinTrendRangeInput">自定义时间范围</label>
+        <div id="asinTrendRangeLabel">最近 30 天</div>
+      </div>
+      <input id="asinTrendRangeInput" class="trend-slider" type="range" min="1" max="30" value="30" />
+    </div>
+  </section>
+</div>
+<div id="markerFloat" class="marker-float" aria-label="标记模式">
+  <button id="markerPdBtn" type="button" class="marker-btn marker-btn-pd" title="PED 模式">PED</button>
+  <button id="markerBdBtn" type="button" class="marker-btn marker-btn-bd" title="BD 模式">BD</button>
+  <button id="markerPcBtn" type="button" class="marker-btn marker-btn-pc" title="PP 模式">PP</button>
 </div>
 
 <script>
@@ -606,11 +1233,13 @@
     selectedKey: "",
     futureDays: 90,
     selectedOffsets: new Set(),
+    selectedMarkers: new Map(),
     recommendedOffsets: new Set(),
     dayRows: [],
     loading: false,
     productSim: new Map(),
     importedFileName: "",
+    markerMode: "PD",
   };
 
   const fileInput = document.getElementById("fileInput");
@@ -627,6 +1256,56 @@
   const customEndWrap = document.getElementById("customEndWrap");
   const customStartInput = document.getElementById("customStart");
   const customEndInput = document.getElementById("customEnd");
+  const markerPdBtn = document.getElementById("markerPdBtn");
+  const markerBdBtn = document.getElementById("markerBdBtn");
+  const markerPcBtn = document.getElementById("markerPcBtn");
+  const markerFloat = document.getElementById("markerFloat");
+  const pageTabCalculator = document.getElementById("pageTabCalculator");
+  const pageTabMonitor = document.getElementById("pageTabMonitor");
+  const calculatorPage = document.getElementById("calculatorPage");
+  const monitorPage = document.getElementById("monitorPage");
+  const futureCard = document.getElementById("futureCard");
+  const asinMonitorModal = document.getElementById("asinMonitorModal");
+  const openAsinMonitorModalBtn = document.getElementById("openAsinMonitorModalBtn");
+  const closeAsinMonitorModalBtn = document.getElementById("closeAsinMonitorModalBtn");
+  const asinMonitorAdvancedDetails = document.getElementById("asinMonitorAdvancedDetails");
+  const asinMonitorAdvancedFields = document.getElementById("asinMonitorAdvancedFields");
+  const asinMonitorLogModal = document.getElementById("asinMonitorLogModal");
+  const closeAsinMonitorLogModalBtn = document.getElementById("closeAsinMonitorLogModalBtn");
+  const asinMonitorLogTitle = document.getElementById("asinMonitorLogTitle");
+  const asinMonitorLogReason = document.getElementById("asinMonitorLogReason");
+  const asinMonitorLogBody = document.getElementById("asinMonitorLogBody");
+  const asinMonitorTrendModal = document.getElementById("asinMonitorTrendModal");
+  const closeAsinMonitorTrendModalBtn = document.getElementById("closeAsinMonitorTrendModalBtn");
+  const asinMonitorTrendTitle = document.getElementById("asinMonitorTrendTitle");
+  const asinMonitorTrendSubtitle = document.getElementById("asinMonitorTrendSubtitle");
+  const asinMonitorTrendChart = document.getElementById("asinMonitorTrendChart");
+  const asinMonitorTrendTooltip = document.getElementById("asinMonitorTrendTooltip");
+  const asinMonitorTrendTooltipDate = document.getElementById("asinMonitorTrendTooltipDate");
+  const asinMonitorTrendTooltipValue = document.getElementById("asinMonitorTrendTooltipValue");
+  const asinMonitorTrendLegend = document.getElementById("asinMonitorTrendLegend");
+  const asinTrendWeekBtn = document.getElementById("asinTrendWeekBtn");
+  const asinTrendMonthBtn = document.getElementById("asinTrendMonthBtn");
+  const asinTrendAllBtn = document.getElementById("asinTrendAllBtn");
+  const asinTrendRangeInput = document.getElementById("asinTrendRangeInput");
+  const asinTrendRangeLabel = document.getElementById("asinTrendRangeLabel");
+  const asinMonitorSummary = document.getElementById("asinMonitorSummary");
+  const asinMonitorInput = document.getElementById("asinMonitorInput");
+  const asinMonitorZip = document.getElementById("asinMonitorZip");
+  const asinMonitorTime = document.getElementById("asinMonitorTime");
+  const asinMonitorEnabled = document.getElementById("asinMonitorEnabled");
+  const asinMonitorHeadless = document.getElementById("asinMonitorHeadless");
+  const asinMonitorRetryCount = document.getElementById("asinMonitorRetryCount");
+  const asinMonitorRetryDelay = document.getElementById("asinMonitorRetryDelay");
+  const saveAsinMonitorBtn = document.getElementById("saveAsinMonitorBtn");
+  const runAsinMonitorBtn = document.getElementById("runAsinMonitorBtn");
+  const refreshAsinMonitorBtn = document.getElementById("refreshAsinMonitorBtn");
+  const asinMonitorPrevDateBtn = document.getElementById("asinMonitorPrevDateBtn");
+  const asinMonitorNextDateBtn = document.getElementById("asinMonitorNextDateBtn");
+  const asinMonitorDateSelect = document.getElementById("asinMonitorDateSelect");
+  const asinMonitorDateLabel = document.getElementById("asinMonitorDateLabel");
+  const asinMonitorStatus = document.getElementById("asinMonitorStatus");
+  const asinMonitorResults = document.getElementById("asinMonitorResults");
   const openFeishuModalBtn = document.getElementById("openFeishuModalBtn");
   const closeFeishuModalBtn = document.getElementById("closeFeishuModalBtn");
   const feishuModal = document.getElementById("feishuModal");
@@ -643,6 +1322,22 @@
   const feishuTip = document.getElementById("feishuTip");
   const feishuPreview = document.getElementById("feishuPreview");
   let selectedOpenIdSet = new Set();
+  let asinMonitorAllRows = [];
+  let asinMonitorSelectedDate = "";
+  let asinMonitorConfiguredAsins = [];
+  const asinMonitorPriceFields = [
+    { key: "discount_price", label: "discount_price" },
+    { key: "list_price", label: "List Price" },
+    { key: "typical_price", label: "Typical price" },
+    { key: "regular_price", label: "Regular Price" },
+    { key: "prime_member_price", label: "Prime Member Price" },
+  ];
+  const asinMonitorTrendState = {
+    asin: "",
+    fieldKey: "discount_price",
+    rangeDays: 30,
+    maxDays: 30,
+  };
   function todayIso() {
     const t = new Date();
     return fmtDate(new Date(t.getFullYear(), t.getMonth(), t.getDate()));
@@ -661,14 +1356,65 @@
     return Math.floor((b.getTime() - a.getTime()) / 86400000);
   }
 
+  function markerMapToObject(map) {
+    const out = {};
+    for (const [k, v] of map.entries()) out[String(k)] = String(v);
+    return out;
+  }
+
+  function updateModeVisibility() {
+    const isCustom = modeSelect.value === "custom";
+    customStartWrap.style.display = isCustom ? "flex" : "none";
+    customEndWrap.style.display = isCustom ? "flex" : "none";
+  }
+
+  function renderMarkerModeButtons() {
+    const items = [
+      [markerPdBtn, "PD", "marker-btn-pd"],
+      [markerBdBtn, "BD", "marker-btn-bd"],
+      [markerPcBtn, "PC", "marker-btn-pc"],
+    ];
+    for (const [btn, mode, cls] of items) {
+      btn.classList.add(cls);
+      const active = state.markerMode === mode;
+      btn.classList.toggle("marker-btn-active", active);
+    }
+  }
+
+  function displayMarker(marker) {
+    const x = String(marker || "").toUpperCase();
+    if (x === "PD") return "PED";
+    if (x === "PC") return "PP";
+    return x;
+  }
+
+  function updateMarkerFloatPosition() {
+    if (!markerFloat || !futureCard) return;
+    const rect = futureCard.getBoundingClientRect();
+    const gap = 14;
+    const panelWidth = markerFloat.offsetWidth || 60;
+    let left = rect.right + gap;
+    const maxLeft = window.innerWidth - panelWidth - 10;
+    if (left > maxLeft) left = maxLeft;
+    if (left < 10) left = 10;
+    markerFloat.style.left = `${Math.round(left)}px`;
+  }
+
   function saveCurrentProductState() {
     if (!state.selectedKey) return;
     const base = todayIso();
     const selectedDates = Array.from(state.selectedOffsets)
       .map((off) => dateAddIso(base, Number(off)))
       .sort();
+    const selectedMarkerDates = {};
+    for (const off of state.selectedOffsets) {
+      const marker = state.selectedMarkers.get(Number(off)) || "PD";
+      selectedMarkerDates[dateAddIso(base, Number(off))] = marker;
+    }
     state.productSim.set(state.selectedKey, {
       selectedOffsets: Array.from(state.selectedOffsets),
+      selectedMarkers: markerMapToObject(state.selectedMarkers),
+      selectedMarkerDates,
       recommendedOffsets: Array.from(state.recommendedOffsets),
       selectedDates,
       baseDate: base,
@@ -694,6 +1440,8 @@
       product_sim: Array.from(state.productSim.entries()).map(([key, sim]) => ({
         key,
         selectedOffsets: sim?.selectedOffsets || [],
+        selectedMarkers: sim?.selectedMarkers || {},
+        selectedMarkerDates: sim?.selectedMarkerDates || {},
         recommendedOffsets: sim?.recommendedOffsets || [],
         selectedDates: sim?.selectedDates || [],
         baseDate: sim?.baseDate || todayIso(),
@@ -704,7 +1452,8 @@
       custom_end: Number(customEndInput.value) || 14,
       selected_key: state.selectedKey || ""
       ,
-      file_name: state.importedFileName || ""
+      file_name: state.importedFileName || "",
+      marker_mode: state.markerMode || "PD"
     };
     await fetch(`${API_BASE}/api/shared-state`, {
       method: "POST",
@@ -735,6 +1484,8 @@
     for (const s of sims) {
       state.productSim.set(s.key, {
         selectedOffsets: s.selectedOffsets || [],
+        selectedMarkers: s.selectedMarkers || {},
+        selectedMarkerDates: s.selectedMarkerDates || {},
         recommendedOffsets: s.recommendedOffsets || [],
         selectedDates: s.selectedDates || [],
         baseDate: s.baseDate || todayIso(),
@@ -750,6 +1501,10 @@
       loadProductState(preferred);
     }
     state.importedFileName = data.file_name || "";
+    state.markerMode = ["BD", "PD", "PC"].includes(String(data.marker_mode || "").toUpperCase())
+      ? String(data.marker_mode).toUpperCase()
+      : "PD";
+    renderMarkerModeButtons();
     if (state.importedFileName) {
       fileName.textContent = state.importedFileName;
     }
@@ -759,6 +1514,7 @@
     const saved = state.productSim.get(key);
     if (!saved) {
       state.selectedOffsets = new Set();
+      state.selectedMarkers = new Map();
       state.recommendedOffsets = new Set();
       return;
     }
@@ -773,6 +1529,25 @@
       .filter((x) => Number.isFinite(x) && x >= 0)
       .sort((a, b) => a - b);
     state.selectedOffsets = new Set(futureOffsets);
+    state.selectedMarkers = new Map();
+    const markerDates = saved.selectedMarkerDates || {};
+    if (markerDates && typeof markerDates === "object" && Object.keys(markerDates).length) {
+      for (const [ds, mk] of Object.entries(markerDates)) {
+        const off = diffDaysIso(tIso, ds);
+        if (!Number.isFinite(off) || off < 0) continue;
+        const marker = String(mk || "").toUpperCase();
+        if (marker === "BD" || marker === "PD") state.selectedMarkers.set(off, marker);
+      }
+    } else {
+      const oldMarkers = saved.selectedMarkers || {};
+      const base = saved.baseDate || tIso;
+      for (const [k, mk] of Object.entries(oldMarkers)) {
+        const off = diffDaysIso(tIso, dateAddIso(base, Number(k)));
+        if (!Number.isFinite(off) || off < 0) continue;
+        const marker = String(mk || "").toUpperCase();
+        if (marker === "BD" || marker === "PD") state.selectedMarkers.set(off, marker);
+      }
+    }
     state.recommendedOffsets = new Set(saved.recommendedOffsets || []);
   }
 
@@ -787,16 +1562,30 @@
         dates = (sim.selectedOffsets || []).map((off) => dateAddIso(base, Number(off)));
       }
       const nextFuture = [];
+      const markerDates = sim.selectedMarkerDates || {};
+      const nextMarkerDates = {};
       for (const ds of dates) {
         if (ds < tIso) rec.dates.add(ds);
-        else nextFuture.push(ds);
+        else {
+          nextFuture.push(ds);
+          if (markerDates[ds]) nextMarkerDates[ds] = markerDates[ds];
+        }
       }
       sim.selectedDates = nextFuture.sort();
+      sim.selectedMarkerDates = nextMarkerDates;
       sim.baseDate = tIso;
       sim.selectedOffsets = sim.selectedDates
         .map((ds) => diffDaysIso(tIso, ds))
         .filter((x) => Number.isFinite(x) && x >= 0)
         .sort((a, b) => a - b);
+      const nextMarkers = {};
+      for (const ds of sim.selectedDates) {
+        const off = diffDaysIso(tIso, ds);
+        if (Number.isFinite(off) && off >= 0 && nextMarkerDates[ds]) {
+          nextMarkers[String(off)] = nextMarkerDates[ds];
+        }
+      }
+      sim.selectedMarkers = nextMarkers;
       state.productSim.set(key, sim);
     }
   }
@@ -925,6 +1714,409 @@
     const txt = await resp.text();
     return { detail: txt || `HTTP ${resp.status}` };
   }
+  function setAsinMonitorStatus(text) {
+    asinMonitorStatus.textContent = text || "";
+  }
+  function switchPage(name) {
+    const page = name === "monitor" ? "monitor" : "calculator";
+    calculatorPage.classList.toggle("active", page === "calculator");
+    monitorPage.classList.toggle("active", page === "monitor");
+    pageTabCalculator.classList.toggle("active", page === "calculator");
+    pageTabMonitor.classList.toggle("active", page === "monitor");
+    markerFloat.style.display = page === "calculator" ? "flex" : "none";
+    try {
+      localStorage.setItem("app_active_page_v1", page);
+    } catch (_) {}
+    if (page === "calculator") {
+      updateMarkerFloatPosition();
+    }
+  }
+  function parseAsinMonitorInput() {
+    return (asinMonitorInput.value || "")
+      .split(/[\s,;]+/)
+      .map(x => x.trim().toUpperCase())
+      .filter(Boolean);
+  }
+  function getVisibleAsinMonitorRows(rows) {
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const allowed = new Set((asinMonitorConfiguredAsins || []).map(x => String(x || "").trim().toUpperCase()).filter(Boolean));
+    if (!allowed.size) return [];
+    return sourceRows.filter(row => allowed.has(String(row?.asin || "").trim().toUpperCase()));
+  }
+  function getAsinMonitorAvailableDates(rows) {
+    return Array.from(new Set(getVisibleAsinMonitorRows(rows).map(row => String(row.fetch_date || "")).filter(Boolean))).sort();
+  }
+  function updateAsinMonitorDateControls(rows) {
+    const visibleRows = getVisibleAsinMonitorRows(rows);
+    const dates = getAsinMonitorAvailableDates(visibleRows);
+    const today = todayIso();
+    if (!dates.length) {
+      asinMonitorSelectedDate = "";
+      asinMonitorDateSelect.innerHTML = "";
+      asinMonitorDateLabel.textContent = "当前无可显示日期。";
+      asinMonitorPrevDateBtn.disabled = true;
+      asinMonitorNextDateBtn.disabled = true;
+      return;
+    }
+    if (!asinMonitorSelectedDate || !dates.includes(asinMonitorSelectedDate)) {
+      asinMonitorSelectedDate = dates.includes(today) ? today : dates[dates.length - 1];
+    }
+    asinMonitorDateSelect.innerHTML = "";
+    for (const ds of dates) {
+      const op = document.createElement("option");
+      op.value = ds;
+      op.textContent = ds;
+      asinMonitorDateSelect.appendChild(op);
+    }
+    asinMonitorDateSelect.value = asinMonitorSelectedDate;
+    const idx = dates.indexOf(asinMonitorSelectedDate);
+    asinMonitorPrevDateBtn.disabled = idx <= 0;
+    asinMonitorNextDateBtn.disabled = idx < 0 || idx >= dates.length - 1;
+    asinMonitorDateLabel.textContent = `当前显示 ${asinMonitorSelectedDate} 的数据，共 ${visibleRows.filter(row => String(row.fetch_date || "") === asinMonitorSelectedDate).length} 条。`;
+  }
+  function renderAsinMonitorResults(rows) {
+    asinMonitorAllRows = Array.isArray(rows) ? rows.slice() : [];
+    updateAsinMonitorDateControls(asinMonitorAllRows);
+    asinMonitorResults.innerHTML = "";
+    const visibleRows = asinMonitorSelectedDate
+      ? getVisibleAsinMonitorRows(asinMonitorAllRows).filter(row => String(row.fetch_date || "") === asinMonitorSelectedDate)
+      : [];
+    if (!visibleRows.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 10;
+      td.className = "tip";
+      td.textContent = "暂无抓取结果。";
+      tr.appendChild(td);
+      asinMonitorResults.appendChild(tr);
+      return;
+    }
+    for (const row of visibleRows) {
+      const tr = document.createElement("tr");
+      const imageTd = document.createElement("td");
+      imageTd.className = "monitor-image-cell";
+      if (row.image_url) {
+        const imageLink = document.createElement("a");
+        imageLink.href = row.url || `https://www.amazon.com/dp/${row.asin || ""}?th=1`;
+        imageLink.target = "_blank";
+        imageLink.rel = "noopener noreferrer";
+        imageLink.className = "monitor-image-link";
+        const image = document.createElement("img");
+        image.className = "monitor-image-thumb";
+        image.src = row.image_url;
+        image.alt = row.asin ? `${row.asin} main image` : "product image";
+        image.loading = "lazy";
+        image.onerror = () => {
+          const empty = document.createElement("span");
+          empty.className = "monitor-image-empty";
+          empty.textContent = "-";
+          imageLink.replaceWith(empty);
+        };
+        imageLink.appendChild(image);
+        imageTd.appendChild(imageLink);
+      } else {
+        const empty = document.createElement("span");
+        empty.className = "monitor-image-empty";
+        empty.textContent = "-";
+        imageTd.appendChild(empty);
+      }
+      tr.appendChild(imageTd);
+      const asinTd = document.createElement("td");
+      const asinLink = document.createElement("a");
+      asinLink.href = row.url || `https://www.amazon.com/dp/${row.asin || ""}?th=1`;
+      asinLink.target = "_blank";
+      asinLink.rel = "noopener noreferrer";
+      asinLink.className = "monitor-asin-link";
+      asinLink.textContent = row.asin || "-";
+      asinTd.appendChild(asinLink);
+      tr.appendChild(asinTd);
+      const variantTd = document.createElement("td");
+      variantTd.textContent = row.color || "-";
+      tr.appendChild(variantTd);
+      const discountTypeTd = document.createElement("td");
+      discountTypeTd.textContent = row.discount_type || "-";
+      tr.appendChild(discountTypeTd);
+      const strengthTd = document.createElement("td");
+      strengthTd.textContent = row.discount_strength || "-";
+      tr.appendChild(strengthTd);
+      asinMonitorPriceFields.forEach((field) => {
+        const td = document.createElement("td");
+        const rawValue = row[field.key] || "-";
+        if (parseMonitorPrice(rawValue) != null) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "monitor-price-btn";
+          btn.textContent = rawValue;
+          btn.title = `查看 ${field.label} 趋势`;
+          btn.addEventListener("click", () => openAsinMonitorTrend(row.asin, field.key));
+          td.appendChild(btn);
+        } else {
+          td.textContent = rawValue;
+        }
+        tr.appendChild(td);
+      });
+      asinMonitorResults.appendChild(tr);
+    }
+  }
+  async function loadAsinMonitorConfig() {
+    const resp = await fetch(`${API_BASE}/api/asin-monitor/config`);
+    const data = await parseApiResponse(resp);
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+    asinMonitorConfiguredAsins = Array.isArray(data.asins) ? data.asins.map(x => String(x || "").trim().toUpperCase()).filter(Boolean) : [];
+    asinMonitorInput.value = asinMonitorConfiguredAsins.join("\n");
+    asinMonitorZip.value = data.us_zip || "10001";
+    asinMonitorTime.value = `${String(data.run_hour ?? 9).padStart(2, "0")}:${String(data.run_minute ?? 0).padStart(2, "0")}`;
+    asinMonitorEnabled.value = data.enabled ? "true" : "false";
+    asinMonitorHeadless.value = data.headless === false ? "false" : "true";
+    asinMonitorRetryCount.value = String(data.retry_count ?? 2);
+    asinMonitorRetryDelay.value = String(data.retry_delay_seconds ?? 20);
+    updateAsinMonitorSummary(data);
+    renderAsinMonitorResults(asinMonitorAllRows);
+    const scheduleText = `已加载配置：${data.enabled ? "自动执行已启用" : "自动执行已停用"}，每天 ${String(data.run_hour ?? 9).padStart(2, "0")}:${String(data.run_minute ?? 0).padStart(2, "0")} 抓取，模式 ${data.headless === false ? "可见窗口" : "无头"}，最近运行 ${data.last_run_at || "无"}`;
+    setAsinMonitorStatus(scheduleText);
+  }
+  async function saveAsinMonitorConfig() {
+    const timeValue = (asinMonitorTime.value || "09:00").trim();
+    const [hourPart, minutePart] = timeValue.split(":");
+    const asins = parseAsinMonitorInput();
+    const payload = {
+      enabled: asinMonitorEnabled.value === "true",
+      asins,
+      us_zip: (asinMonitorZip.value || "").trim() || "10001",
+      run_hour: Number(hourPart || 9),
+      run_minute: Number(minutePart || 0),
+      headless: asinMonitorHeadless.value !== "false",
+      retry_count: Number(asinMonitorRetryCount.value || 2),
+      retry_delay_seconds: Number(asinMonitorRetryDelay.value || 20),
+    };
+    const resp = await fetch(`${API_BASE}/api/asin-monitor/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await parseApiResponse(resp);
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+    asinMonitorConfiguredAsins = asins;
+    updateAsinMonitorSummary(payload);
+    renderAsinMonitorResults(asinMonitorAllRows);
+    return payload;
+  }
+  async function refreshAsinMonitorResults() {
+    const resp = await fetch(`${API_BASE}/api/asin-monitor/results?limit=1000`);
+    const data = await parseApiResponse(resp);
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+    renderAsinMonitorResults(data.results || []);
+  }
+  function openAsinMonitorModal() { asinMonitorModal.classList.add("show"); }
+  function closeAsinMonitorModal() { asinMonitorModal.classList.remove("show"); }
+  function syncAsinMonitorAdvancedFields() {
+    asinMonitorAdvancedFields.classList.toggle("show", !!asinMonitorAdvancedDetails?.open);
+  }
+  function openAsinMonitorLog(row) {
+    asinMonitorLogTitle.textContent = `抓取日志 · ${row.asin || "-"}`;
+    asinMonitorLogReason.textContent = row.reason || "-";
+    const baseLines = [
+      `status=${row.status || "-"}`,
+      `attempts=${row.attempts || 1}`,
+      `reason=${row.reason || "-"}`,
+      `fetched_at=${row.fetched_at || "-"}`,
+      `url=${row.url || "-"}`,
+      `html_path=${row.html_path || "-"}`,
+    ];
+    asinMonitorLogBody.textContent = row.crawl_log
+      ? `${row.crawl_log}\nhtml_path=${row.html_path || "-"}`
+      : baseLines.join("\n");
+    asinMonitorLogModal.classList.add("show");
+  }
+  function closeAsinMonitorLog() { asinMonitorLogModal.classList.remove("show"); }
+  function parseMonitorPrice(value) {
+    const text = String(value || "").trim();
+    if (!text || text === "-") return null;
+    const match = text.match(/-?\d+(?:\.\d+)?/);
+    return match ? Number(match[0]) : null;
+  }
+  function formatTrendPrice(value) {
+    return Number.isFinite(value) ? `$${value.toFixed(2)}` : "-";
+  }
+  function getAsinTrendPoints(asin, fieldKey) {
+    const grouped = new Map();
+    for (const row of asinMonitorAllRows) {
+      if (String(row?.asin || "").trim().toUpperCase() !== String(asin || "").trim().toUpperCase()) continue;
+      const num = parseMonitorPrice(row?.[fieldKey]);
+      if (!Number.isFinite(num)) continue;
+      const fetchDate = String(row?.fetch_date || "").trim();
+      if (!fetchDate) continue;
+      grouped.set(fetchDate, {
+        date: fetchDate,
+        value: num,
+      });
+    }
+    return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }
+  function getFilteredTrendPoints(points, rangeDays) {
+    if (!Array.isArray(points) || !points.length) return [];
+    if (!Number.isFinite(rangeDays) || rangeDays <= 0) return points.slice();
+    const latest = points[points.length - 1].date;
+    return points.filter((point) => diffDaysIso(point.date, latest) <= 0 && diffDaysIso(point.date, latest) < rangeDays);
+  }
+  function renderAsinTrendChart(points) {
+    if (!points.length) {
+      asinMonitorTrendChart.className = "trend-empty";
+      asinMonitorTrendChart.textContent = "暂无可用价格趋势数据。";
+      asinMonitorTrendTooltip.classList.remove("show");
+      return;
+    }
+    const width = 980;
+    const height = 340;
+    const pad = { top: 18, right: 18, bottom: 42, left: 58 };
+    const innerW = width - pad.left - pad.right;
+    const innerH = height - pad.top - pad.bottom;
+    const values = points.map((point) => point.value);
+    let minV = Math.min(...values);
+    let maxV = Math.max(...values);
+    if (minV === maxV) {
+      minV -= 1;
+      maxV += 1;
+    }
+    const yPad = Math.max((maxV - minV) * 0.12, 0.5);
+    minV = Math.max(0, minV - yPad);
+    maxV = maxV + yPad;
+    const xFor = (idx) => pad.left + (points.length === 1 ? innerW / 2 : (idx / (points.length - 1)) * innerW);
+    const yFor = (value) => pad.top + (1 - ((value - minV) / (maxV - minV))) * innerH;
+    const linePoints = points.map((point, idx) => `${xFor(idx).toFixed(2)},${yFor(point.value).toFixed(2)}`).join(" ");
+    const areaPoints = `${pad.left},${pad.top + innerH} ${linePoints} ${xFor(points.length - 1)},${pad.top + innerH}`;
+    const yTicks = 4;
+    const xTicks = Math.min(6, points.length);
+    const yGrid = [];
+    for (let i = 0; i <= yTicks; i++) {
+      const value = minV + ((maxV - minV) * i / yTicks);
+      const y = yFor(value);
+      yGrid.push(`
+        <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="#d9e6f7" stroke-width="1" />
+        <text x="${pad.left - 10}" y="${y + 4}" text-anchor="end" font-size="12" fill="#6481a3">${formatTrendPrice(value)}</text>
+      `);
+    }
+    const xLabels = [];
+    for (let i = 0; i < xTicks; i++) {
+      const idx = xTicks === 1 ? 0 : Math.round((i / (xTicks - 1)) * (points.length - 1));
+      const x = xFor(idx);
+      xLabels.push(`
+        <text x="${x}" y="${height - 14}" text-anchor="middle" font-size="12" fill="#6481a3">${points[idx].date}</text>
+      `);
+    }
+    const dots = points.map((point, idx) => {
+      const x = xFor(idx);
+      const y = yFor(point.value);
+      return `<circle class="trend-point" data-date="${point.date}" data-value="${formatTrendPrice(point.value)}" cx="${x}" cy="${y}" r="4.5" fill="#2f80ed"></circle>`;
+    }).join("");
+    asinMonitorTrendChart.className = "";
+    asinMonitorTrendChart.innerHTML = `
+      <svg class="trend-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="价格趋势图">
+        <defs>
+          <linearGradient id="trendAreaFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(47,128,237,0.24)" />
+            <stop offset="100%" stop-color="rgba(47,128,237,0.04)" />
+          </linearGradient>
+        </defs>
+        ${yGrid.join("")}
+        <polyline points="${areaPoints}" fill="url(#trendAreaFill)" stroke="none"></polyline>
+        <polyline points="${linePoints}" fill="none" stroke="#2f80ed" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>
+        ${dots}
+        ${xLabels.join("")}
+      </svg>
+    `;
+    const svg = asinMonitorTrendChart.querySelector(".trend-chart-svg");
+    const svgRect = () => svg?.getBoundingClientRect();
+    const placeTooltip = (clientX, clientY, dateText, valueText) => {
+      const rect = svgRect();
+      const hostRect = asinMonitorTrendChart.getBoundingClientRect();
+      if (!rect || !hostRect) return;
+      const left = clientX - hostRect.left;
+      const top = clientY - hostRect.top;
+      asinMonitorTrendTooltipDate.textContent = dateText;
+      asinMonitorTrendTooltipValue.textContent = valueText;
+      asinMonitorTrendTooltip.style.left = `${left}px`;
+      asinMonitorTrendTooltip.style.top = `${top}px`;
+      asinMonitorTrendTooltip.classList.add("show");
+    };
+    asinMonitorTrendChart.querySelectorAll(".trend-point").forEach((pointEl) => {
+      pointEl.addEventListener("mouseenter", (event) => {
+        placeTooltip(
+          event.clientX,
+          event.clientY,
+          pointEl.getAttribute("data-date") || "",
+          pointEl.getAttribute("data-value") || ""
+        );
+      });
+      pointEl.addEventListener("mousemove", (event) => {
+        placeTooltip(
+          event.clientX,
+          event.clientY,
+          pointEl.getAttribute("data-date") || "",
+          pointEl.getAttribute("data-value") || ""
+        );
+      });
+      pointEl.addEventListener("mouseleave", () => {
+        asinMonitorTrendTooltip.classList.remove("show");
+      });
+    });
+  }
+  function updateTrendQuickButtons() {
+    asinTrendWeekBtn.classList.toggle("active", asinMonitorTrendState.rangeDays === 7);
+    asinTrendMonthBtn.classList.toggle("active", asinMonitorTrendState.rangeDays === 30);
+    asinTrendAllBtn.classList.toggle("active", asinMonitorTrendState.rangeDays >= asinMonitorTrendState.maxDays);
+  }
+  function renderAsinMonitorTrend() {
+    const field = asinMonitorPriceFields.find((item) => item.key === asinMonitorTrendState.fieldKey) || asinMonitorPriceFields[0];
+    const allPoints = getAsinTrendPoints(asinMonitorTrendState.asin, asinMonitorTrendState.fieldKey);
+    const latestPoint = allPoints[allPoints.length - 1] || null;
+    const earliestPoint = allPoints[0] || null;
+    const spanDays = allPoints.length && earliestPoint && latestPoint ? diffDaysIso(earliestPoint.date, latestPoint.date) + 1 : 1;
+    asinMonitorTrendState.maxDays = Math.max(1, spanDays);
+    if (asinMonitorTrendState.rangeDays > asinMonitorTrendState.maxDays) {
+      asinMonitorTrendState.rangeDays = asinMonitorTrendState.maxDays;
+    }
+    asinTrendRangeInput.min = "1";
+    asinTrendRangeInput.max = String(Math.max(1, asinMonitorTrendState.maxDays));
+    asinTrendRangeInput.value = String(Math.max(1, asinMonitorTrendState.rangeDays));
+    asinTrendRangeLabel.textContent = asinMonitorTrendState.rangeDays >= asinMonitorTrendState.maxDays
+      ? `全部 ${asinMonitorTrendState.maxDays} 天`
+      : `最近 ${asinMonitorTrendState.rangeDays} 天`;
+    asinMonitorTrendTitle.textContent = `${asinMonitorTrendState.asin || "-"} · ${field.label} 趋势`;
+    asinMonitorTrendLegend.textContent = field.label;
+    const filteredPoints = getFilteredTrendPoints(allPoints, asinMonitorTrendState.rangeDays);
+    if (filteredPoints.length) {
+      const first = filteredPoints[0];
+      const last = filteredPoints[filteredPoints.length - 1];
+      asinMonitorTrendSubtitle.textContent = `${first.date} ~ ${last.date}，共 ${filteredPoints.length} 个采样点，最新价 ${formatTrendPrice(last.value)}`;
+    } else {
+      asinMonitorTrendSubtitle.textContent = "当前范围内暂无可用价格数据。";
+    }
+    updateTrendQuickButtons();
+    renderAsinTrendChart(filteredPoints);
+  }
+  function openAsinMonitorTrend(asin, fieldKey) {
+    const allPoints = getAsinTrendPoints(asin, fieldKey);
+    asinMonitorTrendState.asin = String(asin || "").trim().toUpperCase();
+    asinMonitorTrendState.fieldKey = fieldKey;
+    asinMonitorTrendState.maxDays = Math.max(1, allPoints.length > 1 ? diffDaysIso(allPoints[0].date, allPoints[allPoints.length - 1].date) + 1 : 30);
+    asinMonitorTrendState.rangeDays = Math.min(30, asinMonitorTrendState.maxDays);
+    if (asinMonitorTrendState.rangeDays < 1) asinMonitorTrendState.rangeDays = 1;
+    renderAsinMonitorTrend();
+    asinMonitorTrendModal.classList.add("show");
+  }
+  function closeAsinMonitorTrend() {
+    asinMonitorTrendModal.classList.remove("show");
+  }
+  function updateAsinMonitorSummary(data) {
+    const asins = Array.isArray(data?.asins) ? data.asins : [];
+    const count = asins.length;
+    const schedule = `${String(data?.run_hour ?? 9).padStart(2, "0")}:${String(data?.run_minute ?? 0).padStart(2, "0")}`;
+    const mode = data?.headless === false ? "可见窗口" : "无头";
+    const enabled = data?.enabled ? "已启用" : "已停用";
+    const zip = data?.us_zip || "10001";
+    asinMonitorSummary.textContent = `当前监控 ${count} 个 ASIN，自动执行${enabled}，每天 ${schedule} 抓取，美国 ZIP ${zip}，模式 ${mode}。`;
+  }
   function openFeishuModal() { feishuModal.classList.add("show"); }
   function closeFeishuModal() { feishuModal.classList.remove("show"); }
 
@@ -1011,6 +2203,7 @@
         history_dates: historyDates,
         future_days: F,
         selected_offsets: Array.from(state.selectedOffsets).sort((a, b) => a - b),
+        marker_overrides: markerMapToObject(state.selectedMarkers),
         mode,
         preferred_start: preferredStart,
         preferred_end: preferredEnd,
@@ -1027,6 +2220,20 @@
       const data = await resp.json();
       state.dayRows = data.days || [];
       state.selectedOffsets = new Set(data.selected_offsets || []);
+      // 手动标记优先：后端返回只作为补充，不覆盖已手动设置
+      const nextMarkers = new Map();
+      for (const off of state.selectedOffsets) {
+        const keep = String(state.selectedMarkers.get(Number(off)) || "").toUpperCase();
+        if (keep === "BD" || keep === "PD") {
+          nextMarkers.set(Number(off), keep);
+          continue;
+        }
+        const row = state.dayRows.find((x) => Number(x.offset) === Number(off));
+        const marker = String(row?.marker || "").toUpperCase();
+        if (marker === "BD" || marker === "PD") nextMarkers.set(Number(off), marker);
+        else nextMarkers.set(Number(off), "PD");
+      }
+      state.selectedMarkers = nextMarkers;
       state.recommendedOffsets = new Set(data.recommended_offsets || []);
       saveCurrentProductState();
       try { await saveSharedStateToServer(); } catch (_) {}
@@ -1059,32 +2266,41 @@
     rows.forEach((row) => {
       const btn = document.createElement("button");
       btn.className = "day";
+      const localMarker = row.selected ? (state.selectedMarkers.get(Number(row.offset)) || row.marker || "PD") : "";
       if (row.selected) btn.classList.add("selected");
+      if (row.marker) {
+        const markerClass = row.selected ? localMarker : row.marker;
+        btn.classList.add(`marker-${String(markerClass).toLowerCase()}`);
+      }
       if (row.recommended) btn.classList.add("recommended");
       if (row.violation) btn.classList.add("violation");
       if (!row.selected && !row.available) btn.classList.add("disabled");
       const tag = row.violation
         ? "冲突"
-        : row.recommended
-        ? "推荐"
+        : row.marker
+        ? displayMarker(row.selected ? localMarker : row.marker)
         : !row.selected && !row.available
         ? "不可选"
         : row.selected
-        ? "已选"
+        ? "PED"
         : "未选";
       btn.innerHTML = `<div class="date"><span class="date-main">${row.date}</span><span class="date-offset">D+${row.offset}</span></div><div class="tag">${tag}</div><div class="meta">前90天: ${row.past90_count}/44</div><div class="meta">选后余量: ${row.remaining_after_select} 天</div>`;
       btn.onclick = async () => {
         if (state.loading) return;
-        if (row.selected) {
+        const mode = state.markerMode || "PD";
+        if (mode === "PC") {
           state.selectedOffsets.delete(row.offset);
+          state.selectedMarkers.delete(row.offset);
         } else {
-          if (!row.available) return;
+          if (!row.selected && !row.available) return;
           state.selectedOffsets.add(row.offset);
+          state.selectedMarkers.set(row.offset, mode);
         }
         await recalc({ recommend: false });
       };
       calendarEl.appendChild(btn);
     });
+    updateMarkerFloatPosition();
   }
 
   fileBtn.addEventListener("click", () => fileInput.click());
@@ -1157,6 +2373,8 @@
           .sort((a, b) => a - b);
         state.productSim.set(key, {
           selectedOffsets: importedOffsets,
+          selectedMarkers: Object.fromEntries(importedOffsets.map((off) => [String(off), "PD"])),
+          selectedMarkerDates: Object.fromEntries(importedOffsets.map((off) => [dateAddIso(todayIso(), off), "PD"])),
           recommendedOffsets: []
           ,
           selectedDates: importedOffsets.map((off) => dateAddIso(todayIso(), off)),
@@ -1182,6 +2400,7 @@
   recommendBtn.addEventListener("click", async () => {
     // 推荐应基于当前模式重新生成，避免受上一次模式结果影响
     state.selectedOffsets.clear();
+    state.selectedMarkers.clear();
     state.recommendedOffsets.clear();
     saveCurrentProductState();
     await recalc({ recommend: true });
@@ -1189,6 +2408,7 @@
 
   clearBtn.addEventListener("click", async () => {
     state.selectedOffsets.clear();
+    state.selectedMarkers.clear();
     state.recommendedOffsets.clear();
     saveCurrentProductState();
     await recalc({ recommend: false });
@@ -1207,10 +2427,21 @@
     renderHistoryPanel();
   });
 
+  markerPdBtn.addEventListener("click", () => {
+    state.markerMode = "PD";
+    renderMarkerModeButtons();
+  });
+  markerBdBtn.addEventListener("click", () => {
+    state.markerMode = "BD";
+    renderMarkerModeButtons();
+  });
+  markerPcBtn.addEventListener("click", () => {
+    state.markerMode = "PC";
+    renderMarkerModeButtons();
+  });
+
   modeSelect.addEventListener("change", () => {
-    const isCustom = modeSelect.value === "custom";
-    customStartWrap.style.display = isCustom ? "flex" : "none";
-    customEndWrap.style.display = isCustom ? "flex" : "none";
+    updateModeVisibility();
   });
 
   saveBtn.addEventListener("click", () => {
@@ -1220,6 +2451,7 @@
       mode: modeSelect.value,
       customStart: customStartInput.value,
       customEnd: customEndInput.value,
+      markerMode: state.markerMode,
       selectedKey: state.selectedKey,
       productSim: Array.from(state.productSim.entries()),
     };
@@ -1393,6 +2625,10 @@
     setFeishuTip("");
     try {
       await persistFeishuConfig();
+      const reloadResult = await autoLoadFeishuUsers();
+      if (reloadResult?.changed) {
+        await persistFeishuConfig();
+      }
       setFeishuTip("飞书配置已保存。");
     } catch (err) {
       setFeishuTip(`保存飞书配置失败：${err.message || err}`);
@@ -1408,9 +2644,20 @@
       if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
       const items = data.items || [];
       if (!items.length) {
+        const changed = selectedOpenIdSet.size > 0;
+        selectedOpenIdSet = new Set();
+        syncOpenIdsFromSet();
         setFeishuTip("应用可见范围内暂无成员。");
-        return;
+        return { changed, count: 0 };
       }
+      const visibleIds = new Set(
+        items
+          .map((u) => String(u.open_id || "").trim())
+          .filter(Boolean)
+      );
+      const beforeIds = Array.from(selectedOpenIdSet);
+      selectedOpenIdSet = new Set(beforeIds.filter((oid) => visibleIds.has(oid)));
+      const changed = beforeIds.length !== selectedOpenIdSet.size;
       const selected = new Set(selectedOpenIdSet);
       for (const u of items) {
         const oid = u.open_id || "";
@@ -1456,8 +2703,10 @@
       }
       syncOpenIdsFromSet();
       setFeishuTip(`已自动加载成员：${items.length} 人（可多选）。`);
+      return { changed, count: items.length };
     } catch (err) {
       setFeishuTip(`加载成员失败：${err.message || err}`);
+      return { changed: false, count: 0 };
     }
   }
   memberTrigger.addEventListener("click", () => {
@@ -1547,6 +2796,90 @@
   feishuModal.addEventListener("click", (e) => {
     if (e.target === feishuModal) closeFeishuModal();
   });
+  openAsinMonitorModalBtn.addEventListener("click", openAsinMonitorModal);
+  closeAsinMonitorModalBtn.addEventListener("click", closeAsinMonitorModal);
+  asinMonitorModal.addEventListener("click", (e) => {
+    if (e.target === asinMonitorModal) closeAsinMonitorModal();
+  });
+  asinMonitorAdvancedDetails.addEventListener("toggle", syncAsinMonitorAdvancedFields);
+  syncAsinMonitorAdvancedFields();
+  closeAsinMonitorLogModalBtn.addEventListener("click", closeAsinMonitorLog);
+  asinMonitorLogModal.addEventListener("click", (e) => {
+    if (e.target === asinMonitorLogModal) closeAsinMonitorLog();
+  });
+  closeAsinMonitorTrendModalBtn.addEventListener("click", closeAsinMonitorTrend);
+  asinMonitorTrendModal.addEventListener("click", (e) => {
+    if (e.target === asinMonitorTrendModal) closeAsinMonitorTrend();
+  });
+  asinTrendWeekBtn.addEventListener("click", () => {
+    asinMonitorTrendState.rangeDays = Math.min(7, asinMonitorTrendState.maxDays);
+    renderAsinMonitorTrend();
+  });
+  asinTrendMonthBtn.addEventListener("click", () => {
+    asinMonitorTrendState.rangeDays = Math.min(30, asinMonitorTrendState.maxDays);
+    renderAsinMonitorTrend();
+  });
+  asinTrendAllBtn.addEventListener("click", () => {
+    asinMonitorTrendState.rangeDays = asinMonitorTrendState.maxDays;
+    renderAsinMonitorTrend();
+  });
+  asinTrendRangeInput.addEventListener("input", () => {
+    asinMonitorTrendState.rangeDays = Math.max(1, Number(asinTrendRangeInput.value || 1));
+    renderAsinMonitorTrend();
+  });
+  asinMonitorDateSelect.addEventListener("change", () => {
+    asinMonitorSelectedDate = asinMonitorDateSelect.value || "";
+    renderAsinMonitorResults(asinMonitorAllRows);
+  });
+  asinMonitorPrevDateBtn.addEventListener("click", () => {
+    const dates = getAsinMonitorAvailableDates(asinMonitorAllRows);
+    const idx = dates.indexOf(asinMonitorSelectedDate);
+    if (idx > 0) {
+      asinMonitorSelectedDate = dates[idx - 1];
+      renderAsinMonitorResults(asinMonitorAllRows);
+    }
+  });
+  asinMonitorNextDateBtn.addEventListener("click", () => {
+    const dates = getAsinMonitorAvailableDates(asinMonitorAllRows);
+    const idx = dates.indexOf(asinMonitorSelectedDate);
+    if (idx >= 0 && idx < dates.length - 1) {
+      asinMonitorSelectedDate = dates[idx + 1];
+      renderAsinMonitorResults(asinMonitorAllRows);
+    }
+  });
+  saveAsinMonitorBtn.addEventListener("click", async () => {
+    try {
+      const payload = await saveAsinMonitorConfig();
+      setAsinMonitorStatus(`监控配置已保存：${payload.asins.length} 个 ASIN，每天 ${String(payload.run_hour).padStart(2, "0")}:${String(payload.run_minute).padStart(2, "0")} 自动抓取，重试 ${payload.retry_count} 次，间隔 ${payload.retry_delay_seconds} 秒。`);
+      closeAsinMonitorModal();
+    } catch (err) {
+      setAsinMonitorStatus(`保存监控配置失败：${err.message || err}`);
+    }
+  });
+  refreshAsinMonitorBtn.addEventListener("click", async () => {
+    try {
+      setAsinMonitorStatus("正在刷新抓取结果...");
+      await refreshAsinMonitorResults();
+      setAsinMonitorStatus("抓取结果已刷新。");
+    } catch (err) {
+      setAsinMonitorStatus(`刷新结果失败：${err.message || err}`);
+    }
+  });
+  runAsinMonitorBtn.addEventListener("click", async () => {
+    try {
+      await saveAsinMonitorConfig();
+      setAsinMonitorStatus("正在抓取今天的数据，这一步可能需要几十秒...");
+      const resp = await fetch(`${API_BASE}/api/asin-monitor/run-now`, { method: "POST" });
+      const data = await parseApiResponse(resp);
+      if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+      renderAsinMonitorResults(data.results || []);
+      setAsinMonitorStatus(`抓取完成：本次处理 ${data.count || 0} 个 ASIN。`);
+    } catch (err) {
+      setAsinMonitorStatus(`立即抓取失败：${err.message || err}`);
+    }
+  });
+  pageTabCalculator.addEventListener("click", () => switchPage("calculator"));
+  pageTabMonitor.addEventListener("click", () => switchPage("monitor"));
 
   // 恢复上次保存
   try {
@@ -1554,9 +2887,12 @@
     if (raw) {
       const saved = JSON.parse(raw);
       if (saved.futureDays) futureDaysInput.value = String(saved.futureDays);
-      if (saved.mode) modeSelect.value = saved.mode;
+      if (saved.mode && (saved.mode === "even" || saved.mode === "custom")) modeSelect.value = saved.mode;
       if (saved.customStart != null) customStartInput.value = String(saved.customStart);
       if (saved.customEnd != null) customEndInput.value = String(saved.customEnd);
+      if (saved.markerMode && ["BD", "PD", "PC"].includes(String(saved.markerMode).toUpperCase())) {
+        state.markerMode = String(saved.markerMode).toUpperCase();
+      }
       if (Array.isArray(saved.productSim)) {
         state.productSim = new Map(saved.productSim);
       }
@@ -1567,14 +2903,17 @@
   (async () => {
     try {
       await loadFeishuConfig();
+      await loadAsinMonitorConfig();
+      await refreshAsinMonitorResults();
       const resp = await fetch(`${API_BASE}/api/shared-state`);
       if (resp.ok) {
         const data = await resp.json();
         if (Array.isArray(data.records) && data.records.length) {
           if (data.future_days) futureDaysInput.value = String(data.future_days);
-          if (data.mode) modeSelect.value = data.mode;
+          if (data.mode && (data.mode === "even" || data.mode === "custom")) modeSelect.value = data.mode;
           if (data.custom_start != null) customStartInput.value = String(data.custom_start);
           if (data.custom_end != null) customEndInput.value = String(data.custom_end);
+          updateModeVisibility();
           hydrateFromSharedState(data);
           migrateFutureToHistoryAllProducts();
           await recalc({ recommend: false });
@@ -1585,8 +2924,20 @@
     } catch (_) {}
   })();
 
+  try {
+    const savedPage = localStorage.getItem("app_active_page_v1") || "calculator";
+    switchPage(savedPage);
+  } catch (_) {
+    switchPage("calculator");
+  }
+
   renderCalendar();
   renderHistoryPanel();
+  updateModeVisibility();
+  renderMarkerModeButtons();
+  updateMarkerFloatPosition();
+  window.addEventListener("resize", updateMarkerFloatPosition);
+  window.addEventListener("scroll", updateMarkerFloatPosition, { passive: true });
 </script>
 </body>
 </html>

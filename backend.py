@@ -4,24 +4,40 @@ import asyncio
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
+import html
 import json
+import re
+import sqlite3
 import threading
 import time
 import urllib.request
 import urllib.parse
 import urllib.error
 
+from amazon_deal_extractor import (
+    DEFAULT_PROFILE_DIR,
+    _auto_prepare_offer_context,
+    _build_url,
+    _extract_from_html,
+    _read_page_state,
+)
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from playwright.sync_api import sync_playwright
 from pydantic import BaseModel, Field
+try:
+    import chinese_calendar
+except Exception:
+    chinese_calendar = None
 
 
 class CalcRequest(BaseModel):
     history_dates: list[str] = Field(default_factory=list)
     future_days: int = Field(ge=1)
     selected_offsets: list[int] = Field(default_factory=list)
+    marker_overrides: dict[str, str] = Field(default_factory=dict)
     mode: Literal["even", "centered_even", "centered", "head", "tail", "custom"] = "even"
     preferred_start: int | None = None
     preferred_end: int | None = None
@@ -35,6 +51,7 @@ class DayResult(BaseModel):
     recommended: bool
     available: bool
     violation: bool
+    marker: Literal["BD", "PD", "PC"]
     past90_count: int
     remaining_after_select: int
 
@@ -56,6 +73,7 @@ class SharedStateRequest(BaseModel):
     custom_end: int = 14
     selected_key: str = ""
     file_name: str = ""
+    marker_mode: Literal["BD", "PD", "PC"] = "PD"
 
 
 class SharedStateResponse(BaseModel):
@@ -67,6 +85,7 @@ class SharedStateResponse(BaseModel):
     custom_end: int = 14
     selected_key: str = ""
     file_name: str = ""
+    marker_mode: Literal["BD", "PD", "PC"] = "PD"
 
 
 class FeishuConfigRequest(BaseModel):
@@ -86,6 +105,7 @@ class FeishuConfigResponse(BaseModel):
 class ReminderRange(BaseModel):
     start_date: str
     end_date: str
+    marker: Literal["BD", "PD", "PC"] = "PC"
     asin: str = ""
     sku: str = ""
     label: str = ""
@@ -96,6 +116,80 @@ class ReminderDay(BaseModel):
     promo_start: str
     promo_end: str
     items: list[ReminderRange] = Field(default_factory=list)
+
+
+class AmazonDealRequest(BaseModel):
+    url: str
+    headers: dict[str, str] = Field(default_factory=dict)
+    html: str = ""
+
+
+class AmazonDealResponse(BaseModel):
+    url: str
+    discount_type: str | None = None
+    discount_strength: str | None = None
+    discount_price: str | None = None
+    list_price: str | None = None
+    typical_price: str | None = None
+    regular_price: str | None = None
+    prime_member_price: str | None = None
+
+
+class AsinMonitorConfigRequest(BaseModel):
+    enabled: bool = False
+    asins: list[str] = Field(default_factory=list)
+    us_zip: str = "10001"
+    run_hour: int = Field(default=9, ge=0, le=23)
+    run_minute: int = Field(default=0, ge=0, le=59)
+    headless: bool = True
+    retry_count: int = Field(default=2, ge=0, le=5)
+    retry_delay_seconds: int = Field(default=20, ge=0, le=300)
+
+
+class AsinMonitorConfigResponse(BaseModel):
+    enabled: bool = False
+    asins: list[str] = Field(default_factory=list)
+    us_zip: str = "10001"
+    run_hour: int = 9
+    run_minute: int = 0
+    headless: bool = True
+    retry_count: int = 2
+    retry_delay_seconds: int = 20
+    last_run_date: str = ""
+    last_run_at: str = ""
+    last_auto_run_date: str = ""
+    last_auto_run_at: str = ""
+
+
+class AsinMonitorResult(BaseModel):
+    asin: str
+    url: str
+    fetch_date: str
+    fetched_at: str
+    attempts: int = 1
+    status: str
+    reason: str
+    crawl_log: str = ""
+    html_path: str = ""
+    image_url: str = ""
+    color: str = ""
+    discount_type: str | None = None
+    discount_strength: str | None = None
+    discount_price: str | None = None
+    list_price: str | None = None
+    typical_price: str | None = None
+    regular_price: str | None = None
+    prime_member_price: str | None = None
+
+
+class AsinMonitorResultsResponse(BaseModel):
+    results: list[AsinMonitorResult] = Field(default_factory=list)
+
+
+class AsinMonitorRunResponse(BaseModel):
+    ok: bool = True
+    count: int = 0
+    results: list[AsinMonitorResult] = Field(default_factory=list)
 
 
 app = FastAPI(title="Discount Day Calculator API")
@@ -111,9 +205,17 @@ STATE_FILE = BASE_DIR / "shared_state.json"
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 SOURCE_FILE_PATH = DATA_DIR / "source_import.xlsx"
+ASIN_MONITOR_HTML_DIR = DATA_DIR / "asin_monitor_html"
+ASIN_MONITOR_HTML_DIR.mkdir(parents=True, exist_ok=True)
 FEISHU_FILE = DATA_DIR / "feishu_config.json"
 REMINDER_LOG_FILE = DATA_DIR / "reminder_log.json"
+ASIN_MONITOR_CONFIG_FILE = DATA_DIR / "asin_monitor_config.json"
+ASIN_MONITOR_RESULTS_FILE = DATA_DIR / "asin_monitor_results.json"
+SQLITE_DB_FILE = DATA_DIR / "app_state.sqlite3"
 _reminder_lock = threading.Lock()
+_asin_monitor_lock = threading.Lock()
+_db_lock = threading.Lock()
+_db_initialized = False
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -123,16 +225,11 @@ async def home() -> HTMLResponse:
 
 
 def _load_shared_state() -> dict:
-    if not STATE_FILE.exists():
-        return {}
-    try:
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    return _db_load_json("shared_state")
 
 
 def _save_shared_state(data: dict) -> None:
-    STATE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    _db_save_json("shared_state", data)
 
 
 def _load_json_file(path: Path) -> dict:
@@ -148,18 +245,966 @@ def _save_json_file(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _db_connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(SQLITE_DB_FILE, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _db_load_json(key: str, default: dict | None = None) -> dict:
+    _ensure_sqlite_ready()
+    with _db_connect() as conn:
+        row = conn.execute("SELECT value FROM kv_store WHERE key = ?", (key,)).fetchone()
+    if not row:
+        return dict(default or {})
+    try:
+        value = json.loads(str(row["value"]))
+    except Exception:
+        return dict(default or {})
+    return value if isinstance(value, dict) else dict(default or {})
+
+
+def _db_save_json(key: str, data: dict) -> None:
+    _ensure_sqlite_ready()
+    payload = json.dumps(data, ensure_ascii=False)
+    with _db_connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO kv_store (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            """,
+            (key, payload, _utc_now_iso()),
+        )
+        conn.commit()
+
+
+def _legacy_json_migration_done(conn: sqlite3.Connection) -> bool:
+    row = conn.execute("SELECT value FROM meta WHERE key = 'legacy_json_migrated'").fetchone()
+    return bool(row and str(row["value"]) == "1")
+
+
+def _mark_legacy_json_migration_done(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        INSERT INTO meta (key, value, updated_at)
+        VALUES ('legacy_json_migrated', '1', ?)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        """,
+        (_utc_now_iso(),),
+    )
+
+
+def _ensure_asin_monitor_result_columns(conn: sqlite3.Connection) -> None:
+    existing = {
+        str(row["name"])
+        for row in conn.execute("PRAGMA table_info(asin_monitor_results)").fetchall()
+    }
+    wanted = {
+        "list_price": "TEXT",
+        "typical_price": "TEXT",
+        "regular_price": "TEXT",
+        "prime_member_price": "TEXT",
+        "reference_price": "TEXT",
+        "html_path": "TEXT",
+        "image_url": "TEXT",
+        "color": "TEXT",
+    }
+    for name, col_type in wanted.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE asin_monitor_results ADD COLUMN {name} {col_type}")
+
+
+def _save_asin_monitor_html(asin: str, fetch_date: str, fetched_at: str, html_text: str) -> str:
+    asin_key = re.sub(r"[^A-Z0-9_-]+", "_", str(asin or "").strip().upper()) or "UNKNOWN"
+    date_key = re.sub(r"[^0-9-]+", "_", str(fetch_date or "").strip()) or date.today().isoformat()
+    time_key = re.sub(r"[^0-9T]+", "_", str(fetched_at or "").strip()) or _utc_now_iso().replace(":", "-")
+    file_name = f"{asin_key}_{date_key}_{time_key}.html"
+    target = ASIN_MONITOR_HTML_DIR / file_name
+    target.write_text(html_text or "", encoding="utf-8")
+    return str(target.relative_to(BASE_DIR)).replace("\\", "/")
+
+
+def _migrate_legacy_json_to_sqlite(conn: sqlite3.Connection) -> None:
+    legacy_kv = {
+        "shared_state": _load_json_file(STATE_FILE),
+        "feishu_config": _load_json_file(FEISHU_FILE),
+        "reminder_log": _load_json_file(REMINDER_LOG_FILE),
+        "asin_monitor_config": _load_json_file(ASIN_MONITOR_CONFIG_FILE),
+    }
+    for key, value in legacy_kv.items():
+        if isinstance(value, dict) and value:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO kv_store (key, value, updated_at)
+                VALUES (?, ?, ?)
+                """,
+                (key, json.dumps(value, ensure_ascii=False), _utc_now_iso()),
+            )
+
+    legacy_results = _load_json_file(ASIN_MONITOR_RESULTS_FILE)
+    rows = legacy_results.get("results", []) if isinstance(legacy_results, dict) else []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO asin_monitor_results (
+                asin, fetch_date, fetched_at, url, attempts, status, reason,
+                crawl_log, html_path, image_url, color, discount_type, discount_strength, discount_price,
+                list_price, typical_price, regular_price, prime_member_price, reference_price
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(row.get("asin", "")).strip().upper(),
+                str(row.get("fetch_date", "") or ""),
+                str(row.get("fetched_at", "") or ""),
+                str(row.get("url", "") or ""),
+                int(row.get("attempts", 1) or 1),
+                str(row.get("status", "") or ""),
+                str(row.get("reason", "") or ""),
+                str(row.get("crawl_log", "") or ""),
+                str(row.get("html_path", "") or ""),
+                str(row.get("image_url", "") or ""),
+                str(row.get("color", "") or ""),
+                row.get("discount_type"),
+                row.get("discount_strength"),
+                row.get("discount_price"),
+                row.get("list_price"),
+                row.get("typical_price"),
+                row.get("regular_price"),
+                row.get("prime_member_price"),
+                row.get("reference_price"),
+            ),
+        )
+
+
+def _ensure_sqlite_ready() -> None:
+    global _db_initialized
+    if _db_initialized:
+        return
+    with _db_lock:
+        if _db_initialized:
+            return
+        with _db_connect() as conn:
+            conn.executescript(
+                """
+                PRAGMA journal_mode=WAL;
+                CREATE TABLE IF NOT EXISTS meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS kv_store (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS asin_monitor_results (
+                    asin TEXT NOT NULL,
+                    fetch_date TEXT NOT NULL,
+                    fetched_at TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 1,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    crawl_log TEXT NOT NULL DEFAULT '',
+                    html_path TEXT NOT NULL DEFAULT '',
+                    image_url TEXT NOT NULL DEFAULT '',
+                    color TEXT NOT NULL DEFAULT '',
+                    discount_type TEXT,
+                    discount_strength TEXT,
+                    discount_price TEXT,
+                    list_price TEXT,
+                    typical_price TEXT,
+                    regular_price TEXT,
+                    prime_member_price TEXT,
+                    reference_price TEXT,
+                    PRIMARY KEY (asin, fetch_date)
+                );
+                CREATE INDEX IF NOT EXISTS idx_asin_monitor_results_fetch_date
+                ON asin_monitor_results (fetch_date DESC, asin ASC);
+                """
+            )
+            _ensure_asin_monitor_result_columns(conn)
+            if not _legacy_json_migration_done(conn):
+                _migrate_legacy_json_to_sqlite(conn)
+                _mark_legacy_json_migration_done(conn)
+            conn.commit()
+        _db_initialized = True
+
+
+def _utc_now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _default_asin_monitor_config() -> dict:
+    return {
+        "enabled": False,
+        "asins": [],
+        "us_zip": "10001",
+        "run_hour": 9,
+        "run_minute": 0,
+        "headless": True,
+        "retry_count": 2,
+        "retry_delay_seconds": 20,
+        "last_run_date": "",
+        "last_run_at": "",
+        "last_auto_run_date": "",
+        "last_auto_run_at": "",
+    }
+
+
+def _normalize_asin_list(items: list[str] | tuple[str, ...] | None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items or []:
+        for raw in re.split(r"[\s,;]+", str(item or "").strip()):
+            asin = raw.strip().upper()
+            if not asin:
+                continue
+            if asin in seen:
+                continue
+            seen.add(asin)
+            out.append(asin)
+    return out
+
+
+def _load_asin_monitor_config() -> dict:
+    data = _db_load_json("asin_monitor_config")
+    base = _default_asin_monitor_config()
+    base.update(data if isinstance(data, dict) else {})
+    base["asins"] = _normalize_asin_list(base.get("asins", []))
+    base["us_zip"] = str(base.get("us_zip", "10001") or "10001").strip() or "10001"
+    base["run_hour"] = max(0, min(23, int(base.get("run_hour", 9) or 9)))
+    base["run_minute"] = max(0, min(59, int(base.get("run_minute", 0) or 0)))
+    base["enabled"] = bool(base.get("enabled", False))
+    base["headless"] = bool(base.get("headless", True))
+    base["retry_count"] = max(0, min(5, int(base.get("retry_count", 2) or 2)))
+    base["retry_delay_seconds"] = max(0, min(300, int(base.get("retry_delay_seconds", 20) or 20)))
+    base["last_run_date"] = str(base.get("last_run_date", "") or "")
+    base["last_run_at"] = str(base.get("last_run_at", "") or "")
+    base["last_auto_run_date"] = str(base.get("last_auto_run_date", "") or "")
+    base["last_auto_run_at"] = str(base.get("last_auto_run_at", "") or "")
+    return base
+
+
+def _save_asin_monitor_config(data: dict) -> None:
+    payload = _default_asin_monitor_config()
+    payload.update(data if isinstance(data, dict) else {})
+    payload["asins"] = _normalize_asin_list(payload.get("asins", []))
+    _db_save_json("asin_monitor_config", payload)
+
+
+def _load_asin_monitor_results() -> list[dict]:
+    _ensure_sqlite_ready()
+    with _db_connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                asin,
+                url,
+                fetch_date,
+                fetched_at,
+                attempts,
+                status,
+                reason,
+                crawl_log,
+                html_path,
+                image_url,
+                color,
+                discount_type,
+                discount_strength,
+                discount_price,
+                list_price,
+                typical_price,
+                regular_price,
+                prime_member_price
+            FROM asin_monitor_results
+            ORDER BY fetch_date DESC, asin ASC
+            """
+        ).fetchall()
+    out: list[dict] = []
+    for row in rows:
+        item = dict(row)
+        item["html_path"] = str(item.get("html_path", "") or "")
+        item["image_url"] = _resolve_asin_monitor_image_url(item)
+        item["color"] = _resolve_asin_monitor_color(item)
+        out.append(item)
+    return out
+
+
+def _save_asin_monitor_results(rows: list[dict]) -> None:
+    _ensure_sqlite_ready()
+    with _db_connect() as conn:
+        conn.execute("DELETE FROM asin_monitor_results")
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO asin_monitor_results (
+                    asin, fetch_date, fetched_at, url, attempts, status, reason,
+                    crawl_log, html_path, image_url, color, discount_type, discount_strength, discount_price,
+                    list_price, typical_price, regular_price, prime_member_price, reference_price
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(row.get("asin", "")).strip().upper(),
+                    str(row.get("fetch_date", "") or ""),
+                    str(row.get("fetched_at", "") or ""),
+                    str(row.get("url", "") or ""),
+                    int(row.get("attempts", 1) or 1),
+                    str(row.get("status", "") or ""),
+                    str(row.get("reason", "") or ""),
+                    str(row.get("crawl_log", "") or ""),
+                    str(row.get("html_path", "") or ""),
+                    str(row.get("image_url", "") or ""),
+                    str(row.get("color", "") or ""),
+                    row.get("discount_type"),
+                    row.get("discount_strength"),
+                    row.get("discount_price"),
+                    row.get("list_price"),
+                    row.get("typical_price"),
+                    row.get("regular_price"),
+                    row.get("prime_member_price"),
+                    row.get("reference_price"),
+                ),
+            )
+        conn.commit()
+
+
+def _load_asin_monitor_results_for_date(fetch_date: str) -> list[dict]:
+    _ensure_sqlite_ready()
+    with _db_connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                asin,
+                url,
+                fetch_date,
+                fetched_at,
+                attempts,
+                status,
+                reason,
+                crawl_log,
+                html_path,
+                image_url,
+                color,
+                discount_type,
+                discount_strength,
+                discount_price,
+                list_price,
+                typical_price,
+                regular_price,
+                prime_member_price
+            FROM asin_monitor_results
+            WHERE fetch_date = ?
+            ORDER BY asin ASC
+            """,
+            (str(fetch_date),),
+        ).fetchall()
+    out: list[dict] = []
+    for row in rows:
+        item = dict(row)
+        item["html_path"] = str(item.get("html_path", "") or "")
+        item["image_url"] = _resolve_asin_monitor_image_url(item)
+        item["color"] = _resolve_asin_monitor_color(item)
+        out.append(item)
+    return out
+
+
+def _upsert_asin_monitor_results(new_rows: list[dict], keep_latest: int = 1000) -> list[dict]:
+    _ensure_sqlite_ready()
+    with _db_connect() as conn:
+        for row in new_rows:
+            if not isinstance(row, dict):
+                continue
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO asin_monitor_results (
+                    asin, fetch_date, fetched_at, url, attempts, status, reason,
+                    crawl_log, html_path, image_url, color, discount_type, discount_strength, discount_price,
+                    list_price, typical_price, regular_price, prime_member_price, reference_price
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(row.get("asin", "")).strip().upper(),
+                    str(row.get("fetch_date", "") or ""),
+                    str(row.get("fetched_at", "") or ""),
+                    str(row.get("url", "") or ""),
+                    int(row.get("attempts", 1) or 1),
+                    str(row.get("status", "") or ""),
+                    str(row.get("reason", "") or ""),
+                    str(row.get("crawl_log", "") or ""),
+                    str(row.get("html_path", "") or ""),
+                    str(row.get("image_url", "") or ""),
+                    str(row.get("color", "") or ""),
+                    row.get("discount_type"),
+                    row.get("discount_strength"),
+                    row.get("discount_price"),
+                    row.get("list_price"),
+                    row.get("typical_price"),
+                    row.get("regular_price"),
+                    row.get("prime_member_price"),
+                    row.get("reference_price"),
+                ),
+            )
+        stale = conn.execute(
+            """
+            SELECT asin, fetch_date
+            FROM asin_monitor_results
+            ORDER BY fetch_date DESC, asin ASC
+            LIMIT -1 OFFSET ?
+            """,
+            (max(0, keep_latest),),
+        ).fetchall()
+        for stale_row in stale:
+            conn.execute(
+                "DELETE FROM asin_monitor_results WHERE asin = ? AND fetch_date = ?",
+                (str(stale_row["asin"]), str(stale_row["fetch_date"])),
+            )
+        conn.commit()
+    return _load_asin_monitor_results()
+
+
 def _parse_date(s: str) -> date:
     return datetime.strptime(s, "%Y-%m-%d").date()
+
+
+def _extract_first_group(text: str, patterns: list[str], flags: int = re.IGNORECASE | re.DOTALL) -> str | None:
+    for pattern in patterns:
+        m = re.search(pattern, text, flags)
+        if m:
+            value = m.group(1)
+            value = html.unescape(value)
+            value = re.sub(r"\s+", " ", value).strip()
+            if value:
+                return value
+    return None
+
+
+def _normalize_price(value: str | None) -> str | None:
+    if not value:
+        return None
+    text = value.replace(",", "").strip()
+    m = re.search(r"(\$?\d+(?:\.\d{1,2})?)", text)
+    if not m:
+        return None
+    amount = m.group(1)
+    if not amount.startswith("$"):
+        amount = f"${amount}"
+    return amount
+
+
+def _resolve_asin_monitor_image_url(row: dict) -> str:
+    image_url = str(row.get("image_url", "") or "").strip()
+    if image_url:
+        return image_url
+    html_path = str(row.get("html_path", "") or "").strip()
+    if not html_path:
+        return ""
+    target = (BASE_DIR / html_path).resolve()
+    try:
+        target.relative_to(BASE_DIR.resolve())
+    except ValueError:
+        return ""
+    if not target.exists() or not target.is_file():
+        return ""
+    try:
+        html_text = target.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return ""
+    parsed = _extract_from_html(html_text, "")
+    return str(parsed.get("image_url", "") or "").strip()
+
+
+def _resolve_asin_monitor_color(row: dict) -> str:
+    color = str(row.get("color", "") or "").strip()
+    if color:
+        return color
+    html_path = str(row.get("html_path", "") or "").strip()
+    if not html_path:
+        return ""
+    target = (BASE_DIR / html_path).resolve()
+    try:
+        target.relative_to(BASE_DIR.resolve())
+    except ValueError:
+        return ""
+    if not target.exists() or not target.is_file():
+        return ""
+    try:
+        html_text = target.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return ""
+    parsed = _extract_from_html(html_text, "")
+    return str(parsed.get("color", "") or "").strip()
+
+
+def _fetch_amazon_page(url: str, extra_headers: dict[str, str] | None = None) -> str:
+    headers = {
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    if extra_headers:
+        headers.update({str(k): str(v) for k, v in extra_headers.items() if str(k).strip()})
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        charset = resp.headers.get_content_charset() or "utf-8"
+        body = resp.read()
+    return body.decode(charset, errors="replace")
+
+
+def _parse_amazon_deal_fields(page_html: str) -> dict:
+    compact_html = re.sub(r"\s+", " ", page_html)
+    page_text = re.sub(r"<[^>]+>", " ", page_html)
+    page_text = html.unescape(re.sub(r"\s+", " ", page_text)).strip()
+    scope = _extract_first_group(
+        compact_html,
+        [
+            r'(<div id="dealBadge_feature_div".*?<div id="promoPriceBlockMessage_feature_div".*?</div>\s*</div>)',
+            r'(<div id="corePrice_desktop".*?<div id="amazonGlobal_feature_div".*?</div>)',
+            r'(<div id="ppd".*?<div id="centerCol".*?</div>)',
+        ],
+    ) or compact_html
+
+    discount_type = _extract_first_group(
+        scope,
+        [
+            r'"dealBadgeSupportingText":"([^"]+)"',
+            r'delightPricingBadge[^>]*>.*?>\s*([^<]*deal)\s*<',
+            r'a-badge-label-inner[^>]*>\s*([^<]*deal)\s*<',
+            r'>\s*((?:Limited|Prime Exclusive|Prime Big Deal|Best|Lightning)[^<]{0,40}?deal)\s*<',
+        ],
+    )
+
+    price_scope = _extract_first_group(
+        compact_html,
+        [
+            r'(<div id="corePriceDisplay_desktop_feature_div".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
+            r'(<div id="apex_desktop".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
+            r'(<div id="desktop_buybox".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
+            r'(<div id="corePrice_feature_div".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
+            r'(<div id="corePriceDisplay_desktop_feature_div".*?<div id="amazonGlobal_feature_div".*?</div>)',
+            r'(<div id="apex_desktop".*?<div id="amazonGlobal_feature_div".*?</div>)',
+        ],
+    ) or scope
+
+    discount_strength = _extract_first_group(
+        price_scope,
+        [
+            r'"percentageDisplayString":"(-?\d+%)"',
+            r'"savingsPercentage":"(-?\d+%)"',
+            r'reinventPriceSavingsPercentageMargin[^>]*>\s*(?:<span[^>]*>)?\s*(-\d+%)\s*<',
+            r'>\s*(-\d+%)\s*<',
+        ],
+    )
+
+    discount_price = _normalize_price(
+        _extract_first_group(
+            price_scope,
+            [
+                r'apex-pricetopay-accessibility-label[^>]*>\s*\$?([\d,]+\.\d{2})\s+with\s+\d+\s+percent\s+savings',
+                r'customerVisiblePrice\]\[displayString\]"\s+value="\$?([\d,]+\.\d{2})"',
+                r'"priceToPay"[^{}]{0,400}?"moneyValueOrRange":"([\d.,]+)"',
+                r'"priceToPay"[^{}]{0,400}?"displayString":"[^$]*\$?([\d,]+\.\d{2})"',
+                r'Limited time deal.*?\$?([\d,]+\.\d{2})',
+            ],
+        )
+    )
+
+    list_price = _normalize_price(
+        _extract_first_group(
+            price_scope,
+            [
+                r'List Price:?\s*</span>\s*<span[^>]*>\s*\$?\s*([\d,]+\.\d{2})',
+                r'List Price:?\s*\$?\s*([\d,]+\.\d{2})',
+                r'"label"\s*:\s*"List Price:?"\s*,.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
+                r'"listPrice"[^{}]{0,300}?"displayString":"[^$]*\$?([\d,]+\.\d{2})"',
+            ],
+        )
+    )
+
+    typical_price = _normalize_price(
+        _extract_first_group(
+            price_scope,
+            [
+                r'Was Price:?\s*</span>\s*<span[^>]*>\s*\$?\s*([\d,]+\.\d{2})',
+                r'Was Price:?\s*\$?\s*([\d,]+\.\d{2})',
+                r'Typical price:?\s*</span>\s*<span[^>]*>\s*\$?\s*([\d,]+\.\d{2})',
+                r'Typical price:?\s*\$?\s*([\d,]+\.\d{2})',
+                r'"label"\s*:\s*"Typical price:?"\s*,.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
+                r'"label"\s*:\s*"Was Price:?"\s*,.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
+                r'"basisPriceToCompare"[^{}]{0,200}?"moneyValueOrRange":"([\d.,]+)"',
+                r'"basisPrice"\s*:\s*\{.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
+            ],
+        )
+    )
+
+    regular_price = _normalize_price(
+        _extract_first_group(
+            compact_html,
+            [
+                r'Regular Price:?\s*</span>\s*<span[^>]*>\s*\$?\s*([\d,]+\.\d{2})',
+                r'Regular Price:?\s*\$?\s*([\d,]+\.\d{2})',
+                r'"label"\s*:\s*"Regular Price:?"\s*,.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
+                r'"regularPrice"[^{}]{0,300}?"displayString":"[^$]*\$?([\d,]+\.\d{2})"',
+            ],
+        )
+    )
+
+    prime_member_price = _normalize_price(
+        _extract_first_group(
+            compact_html,
+            [
+                r'Prime Member Price:?\s*</span>\s*<span[^>]*>\s*\$?\s*([\d,]+\.\d{2})',
+                r'Prime Member Price:?\s*\$?\s*([\d,]+\.\d{2})',
+                r'"label"\s*:\s*"Prime Member Price:?"\s*,.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
+                r'"primeMemberPrice"[^{}]{0,300}?"displayString":"[^$]*\$?([\d,]+\.\d{2})"',
+            ],
+        )
+    )
+
+    if not discount_type:
+        discount_type = _extract_first_group(
+            page_text,
+            [
+                r"\b((?:Limited|Prime Exclusive|Prime Big Deal|Best|Lightning)[ ]+[A-Za-z ]*deal)\b",
+            ],
+            flags=re.IGNORECASE,
+        )
+
+    if not discount_strength:
+        discount_strength = _extract_first_group(
+            page_text,
+            [
+                r"\b(-\d+%)\b",
+            ],
+            flags=re.IGNORECASE,
+        )
+
+    if not list_price:
+        list_price = _normalize_price(
+            _extract_first_group(
+                page_text,
+                [
+                    r"List Price:?\s*(\$?\d+(?:\.\d{2})?)",
+                ],
+                flags=re.IGNORECASE,
+            )
+        )
+
+    if not typical_price:
+        typical_price = _normalize_price(
+            _extract_first_group(
+                page_text,
+                [
+                    r"Typical price:?\s*(\$?\d+(?:\.\d{2})?)",
+                    r"Was Price:?\s*(\$?\d+(?:\.\d{2})?)",
+                ],
+                flags=re.IGNORECASE,
+            )
+        )
+
+    if not regular_price:
+        regular_price = _normalize_price(
+            _extract_first_group(
+                page_text,
+                [r"Regular Price:?\s*(\$?\d+(?:\.\d{2})?)"],
+                flags=re.IGNORECASE,
+            )
+        )
+
+    if not prime_member_price:
+        prime_member_price = _normalize_price(
+            _extract_first_group(
+                page_text,
+                [r"Prime Member Price:?\s*(\$?\d+(?:\.\d{2})?)"],
+                flags=re.IGNORECASE,
+            )
+        )
+
+    return {
+        "discount_type": discount_type,
+        "discount_strength": discount_strength,
+        "discount_price": discount_price,
+        "list_price": list_price,
+        "typical_price": typical_price,
+        "regular_price": regular_price,
+        "prime_member_price": prime_member_price,
+    }
+
+
+def _run_asin_monitor_once(config: dict) -> list[dict]:
+    asins = _normalize_asin_list(config.get("asins", []))
+    if not asins:
+        return []
+    profile_name = "headless" if bool(config.get("headless", True)) else "headed"
+    profile_dir = Path(DEFAULT_PROFILE_DIR).resolve() / profile_name
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    us_zip = str(config.get("us_zip", "10001") or "10001").strip() or "10001"
+    headless = bool(config.get("headless", True))
+    retry_count = max(0, int(config.get("retry_count", 2) or 0))
+    retry_delay_seconds = max(0, int(config.get("retry_delay_seconds", 20) or 0))
+    today_key = date.today().isoformat()
+    now_key = _utc_now_iso()
+    rows: list[dict] = []
+
+    with sync_playwright() as p:
+        try:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=str(profile_dir),
+                channel="msedge",
+                headless=headless,
+                locale="en-US",
+                timezone_id="America/Los_Angeles",
+                viewport={"width": 1600, "height": 1400},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/148.0.0.0 Safari/537.36"
+                ),
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"failed to open Edge persistent profile ({profile_name}); "
+                f"close existing Edge windows using this monitor profile and retry: {e}"
+            ) from e
+        try:
+            page = context.pages[0] if context.pages else context.new_page()
+            for asin in asins:
+                url = _build_url(asin, None)
+                attempts = 0
+                row: dict | None = None
+                attempt_logs: list[str] = []
+                while attempts <= retry_count:
+                    attempts += 1
+                    try:
+                        attempt_logs.append(f"[attempt {attempts}] open {url}")
+                        page.goto(url, wait_until="domcontentloaded", timeout=90000)
+                        page.wait_for_timeout(5000)
+                        attempt_logs.append(f"[attempt {attempts}] page loaded: {page.url}")
+                        _auto_prepare_offer_context(page, us_zip)
+                        page.wait_for_timeout(3000)
+                        state = _read_page_state(page)
+                        parsed = _extract_from_html(state.html, state.body_text)
+                        fetched_at = _utc_now_iso()
+                        html_path = _save_asin_monitor_html(asin, today_key, fetched_at, state.html)
+                        attempt_logs.append(
+                            f"[attempt {attempts}] status={state.status}; reason={state.reason}; "
+                            f"image_url={parsed.get('image_url') or '-'}; "
+                            f"color={parsed.get('color') or '-'}; "
+                            f"discount_type={parsed.get('discount_type') or '-'}; "
+                            f"discount_strength={parsed.get('discount_strength') or '-'}; "
+                            f"discount_price={parsed.get('discount_price') or '-'}; "
+                            f"list_price={parsed.get('list_price') or '-'}; "
+                            f"typical_price={parsed.get('typical_price') or '-'}; "
+                            f"regular_price={parsed.get('regular_price') or '-'}; "
+                            f"prime_member_price={parsed.get('prime_member_price') or '-'}"
+                        )
+                        row = {
+                            "asin": asin,
+                            "url": page.url,
+                            "fetch_date": today_key,
+                            "fetched_at": fetched_at,
+                            "attempts": attempts,
+                            "status": state.status,
+                            "reason": state.reason,
+                            "crawl_log": "\n".join(attempt_logs),
+                            "html_path": html_path,
+                            "image_url": parsed.get("image_url") or "",
+                            "color": parsed.get("color") or "",
+                            "discount_type": parsed.get("discount_type"),
+                            "discount_strength": parsed.get("discount_strength"),
+                            "discount_price": parsed.get("discount_price"),
+                            "list_price": parsed.get("list_price"),
+                            "typical_price": parsed.get("typical_price"),
+                            "regular_price": parsed.get("regular_price"),
+                            "prime_member_price": parsed.get("prime_member_price"),
+                            "reference_price": None,
+                        }
+                        should_retry = state.status in {"blocked", "unknown"} and attempts <= retry_count
+                        if should_retry and retry_delay_seconds > 0:
+                            attempt_logs.append(
+                                f"[attempt {attempts}] retry scheduled after {retry_delay_seconds}s"
+                            )
+                            time.sleep(retry_delay_seconds)
+                            continue
+                        break
+                    except Exception as e:
+                        attempt_logs.append(f"[attempt {attempts}] exception: {e}")
+                        fetched_at = _utc_now_iso()
+                        html_path = ""
+                        try:
+                            html_snapshot = page.content()
+                            if html_snapshot:
+                                html_path = _save_asin_monitor_html(asin, today_key, fetched_at, html_snapshot)
+                        except Exception:
+                            html_path = ""
+                        row = {
+                            "asin": asin,
+                            "url": url,
+                            "fetch_date": today_key,
+                            "fetched_at": fetched_at,
+                            "attempts": attempts,
+                            "status": "error",
+                            "reason": str(e),
+                            "crawl_log": "\n".join(attempt_logs),
+                            "html_path": html_path,
+                            "image_url": "",
+                            "color": "",
+                            "discount_type": None,
+                            "discount_strength": None,
+                            "discount_price": None,
+                            "list_price": None,
+                            "typical_price": None,
+                            "regular_price": None,
+                            "prime_member_price": None,
+                            "reference_price": None,
+                        }
+                        if attempts <= retry_count and retry_delay_seconds > 0:
+                            attempt_logs.append(
+                                f"[attempt {attempts}] retry scheduled after {retry_delay_seconds}s"
+                            )
+                            time.sleep(retry_delay_seconds)
+                            continue
+                        break
+                if row is None:
+                    row = {
+                        "asin": asin,
+                        "url": url,
+                        "fetch_date": today_key,
+                        "fetched_at": now_key,
+                        "attempts": attempts or 1,
+                        "status": "error",
+                        "reason": "unknown crawler failure",
+                        "crawl_log": "\n".join(attempt_logs),
+                        "html_path": "",
+                        "image_url": "",
+                        "color": "",
+                        "discount_type": None,
+                        "discount_strength": None,
+                        "discount_price": None,
+                        "list_price": None,
+                        "typical_price": None,
+                        "regular_price": None,
+                        "prime_member_price": None,
+                        "reference_price": None,
+                    }
+                rows.append(row)
+        finally:
+            context.close()
+    return rows
+
+
+def _execute_asin_monitor_run(force: bool = False, trigger: str = "manual") -> list[dict]:
+    with _asin_monitor_lock:
+        config = _load_asin_monitor_config()
+        today_key = date.today().isoformat()
+        configured_asins = _normalize_asin_list(config.get("asins", []))
+        existing_rows = _load_asin_monitor_results_for_date(today_key)
+        existing_asins = {
+            str(row.get("asin", "")).strip().upper()
+            for row in existing_rows
+            if str(row.get("asin", "")).strip()
+        }
+
+        if trigger == "auto":
+            target_asins = configured_asins if force else [asin for asin in configured_asins if asin not in existing_asins]
+        else:
+            dedupe_key = "last_run_date"
+            if not force and str(config.get(dedupe_key, "")) == today_key and set(configured_asins).issubset(existing_asins):
+                return existing_rows
+            target_asins = configured_asins
+
+        if not target_asins:
+            if trigger == "auto":
+                config["last_auto_run_date"] = today_key
+                config["last_auto_run_at"] = _utc_now_iso()
+                _save_asin_monitor_config(config)
+            return existing_rows
+
+        run_config = dict(config)
+        run_config["asins"] = target_asins
+        rows = _run_asin_monitor_once(run_config)
+        _upsert_asin_monitor_results(rows)
+        config["last_run_date"] = today_key
+        config["last_run_at"] = _utc_now_iso()
+        if trigger == "auto":
+            config["last_auto_run_date"] = today_key
+            config["last_auto_run_at"] = config["last_run_at"]
+        _save_asin_monitor_config(config)
+        return rows
+
+
+def _asin_monitor_worker() -> None:
+    while True:
+        try:
+            config = _load_asin_monitor_config()
+            if config.get("enabled") and config.get("asins"):
+                now = datetime.now()
+                run_after = now.replace(
+                    hour=int(config.get("run_hour", 9) or 9),
+                    minute=int(config.get("run_minute", 0) or 0),
+                    second=0,
+                    microsecond=0,
+                )
+                if now >= run_after:
+                    _execute_asin_monitor_run(force=False, trigger="auto")
+        except Exception:
+            pass
+        time.sleep(30)
 
 
 def _build_dates(today: date, n: int) -> list[date]:
     return [today + timedelta(days=i) for i in range(n)]
 
 
+def _build_marker_list(
+    future_days: int,
+    selected: list[bool],
+    mode: str,
+    preferred_start: int | None,
+    preferred_end: int | None,
+) -> list[str]:
+    markers = ["PC"] * future_days
+    s = 0 if preferred_start is None else max(0, min(future_days - 1, preferred_start))
+    e = future_days - 1 if preferred_end is None else max(0, min(future_days - 1, preferred_end))
+    l, r = (s, e) if s <= e else (e, s)
+    for i in range(future_days):
+        if not selected[i]:
+            markers[i] = "PC"
+            continue
+        if mode == "custom" and l <= i <= r:
+            markers[i] = "BD"
+        else:
+            markers[i] = "PD"
+    return markers
+
+
+def _normalize_marker(v: str | None) -> str | None:
+    if not v:
+        return None
+    x = str(v).strip().upper()
+    if x in {"BD", "PD", "PC"}:
+        return x
+    return None
+
+
 def _compute(
     history_dates: list[str],
     future_days: int,
     selected_offsets: list[int],
+    marker_overrides: dict[str, str],
     mode: str,
     preferred_start: int | None,
     preferred_end: int | None,
@@ -431,6 +1476,17 @@ def _compute(
 
     ok, violations = validate(selected)
     sw = selected_window_counts(selected)
+    markers = _build_marker_list(future_days, selected, mode, preferred_start, preferred_end)
+    for k, v in (marker_overrides or {}).items():
+        try:
+            idx = int(k)
+        except Exception:
+            continue
+        if idx < 0 or idx >= future_days or not selected[idx]:
+            continue
+        mk = _normalize_marker(v)
+        if mk in {"BD", "PD"}:
+            markers[idx] = mk
 
     availability = [False] * future_days
     for i in range(future_days):
@@ -447,6 +1503,7 @@ def _compute(
                 recommended=recommended_mask[i],
                 available=availability[i],
                 violation=violations[i],
+                marker=markers[i],
                 past90_count=used,
                 remaining_after_select=max(0, 44 - used),
             )
@@ -496,10 +1553,37 @@ def _shift_weekend_to_friday(d: date) -> date:
     return d
 
 
+def _is_cn_holiday(d: date) -> bool:
+    if chinese_calendar is None:
+        return False
+    try:
+        return bool(chinese_calendar.is_holiday(d))
+    except Exception:
+        return False
+
+
+def _shift_to_previous_workday(d: date) -> date:
+    # 规则：前两天若遇周末或法定节假日，持续前移到最近工作日
+    x = d
+    while True:
+        if x.weekday() >= 5:
+            x -= timedelta(days=1)
+            continue
+        if _is_cn_holiday(x):
+            x -= timedelta(days=1)
+            continue
+        break
+    return x
+
+
 def _build_reminder_days(shared: dict, today: date | None = None) -> list[dict]:
     if today is None:
         today = date.today()
     records = {str(x.get("key", "")): x for x in shared.get("records", []) if isinstance(x, dict)}
+    future_days = max(1, int(shared.get("future_days", 90) or 90))
+    mode = str(shared.get("mode", "even") or "even")
+    preferred_start = shared.get("custom_start", 0)
+    preferred_end = shared.get("custom_end", 14)
     grouped: dict[str, dict] = {}
     for sim in shared.get("product_sim", []):
         if not isinstance(sim, dict):
@@ -507,31 +1591,60 @@ def _build_reminder_days(shared: dict, today: date | None = None) -> list[dict]:
         key = str(sim.get("key", "") or "")
         if not key:
             continue
-        offsets = sim.get("selectedOffsets", []) or []
-        ranges = _group_contiguous(offsets)
+        raw_offsets = sim.get("selectedOffsets", []) or []
+        selected_markers = sim.get("selectedMarkers", {}) or {}
+        selected = [False] * future_days
+        for x in raw_offsets:
+            try:
+                ix = int(x)
+            except Exception:
+                continue
+            if 0 <= ix < future_days:
+                selected[ix] = True
+        markers = _build_marker_list(future_days, selected, mode, preferred_start, preferred_end)
+        for k, v in selected_markers.items():
+            try:
+                idx = int(k)
+            except Exception:
+                continue
+            if idx < 0 or idx >= future_days or not selected[idx]:
+                continue
+            mk = _normalize_marker(v)
+            if mk in {"BD", "PD"}:
+                markers[idx] = mk
+        marker_ranges: list[tuple[int, int, str]] = []
+        start = 0
+        cur = markers[0]
+        for i in range(1, future_days):
+            if markers[i] != cur:
+                marker_ranges.append((start, i - 1, cur))
+                start = i
+                cur = markers[i]
+        marker_ranges.append((start, future_days - 1, cur))
         rec = records.get(key, {})
         meta = rec.get("meta", {}) if isinstance(rec.get("meta"), dict) else {}
         label = str(rec.get("label", key) or key)
         asin = str(meta.get("ASIN", "") or "")
         sku = str(meta.get("SKU", "") or "")
-        for s, e in ranges:
+        for s, e, marker in marker_ranges:
             if s < 0:
                 continue
-            promo_start = today + timedelta(days=s)
-            promo_end = today + timedelta(days=e)
-            remind_date = _shift_weekend_to_friday(promo_start - timedelta(days=2))
+            mark_start = today + timedelta(days=s)
+            mark_end = today + timedelta(days=e)
+            remind_date = _shift_to_previous_workday(mark_start - timedelta(days=2))
             k = remind_date.isoformat()
             if k not in grouped:
                 grouped[k] = {
                     "remind_date": k,
-                    "promo_start": promo_start.isoformat(),
-                    "promo_end": promo_end.isoformat(),
+                    "promo_start": mark_start.isoformat(),
+                    "promo_end": mark_end.isoformat(),
                     "items": [],
                 }
             grouped[k]["items"].append(
                 {
-                    "start_date": promo_start.isoformat(),
-                    "end_date": promo_end.isoformat(),
+                    "start_date": mark_start.isoformat(),
+                    "end_date": mark_end.isoformat(),
+                    "marker": marker,
                     "asin": asin,
                     "sku": sku,
                     "label": label,
@@ -664,9 +1777,9 @@ def _feishu_get_users_batch(token: str, open_ids: list[str]) -> list[dict]:
 
 def _build_message(day_row: dict) -> str:
     lines = [
-        f"折扣提醒：{day_row['promo_start']} - {day_row['promo_end']} 需要添加折扣",
-        f"提醒日期：{day_row['remind_date']}",
-        "产品清单：",
+        f"?????{day_row['promo_start']} - {day_row['promo_end']} ??????",
+        f"?????{day_row['remind_date']}",
+        "?????",
     ]
     seen = set()
     for item in day_row.get("items", []):
@@ -675,13 +1788,14 @@ def _build_message(day_row: dict) -> str:
         label = str(item.get("label", "") or "").strip()
         start = str(item.get("start_date", "") or "")
         end = str(item.get("end_date", "") or "")
+        marker = str(item.get("marker", "PC") or "PC").upper()
         base = label if label else f"{asin} | {sku}".strip(" |")
         base = base if base else "-"
-        key = (base, start, end)
+        key = (base, start, end, marker)
         if key in seen:
             continue
         seen.add(key)
-        lines.append(f"- {base} | {start}~{end}")
+        lines.append(f"- [{marker}] {base} | {start}~{end}")
     return "\n".join(lines)
 
 
@@ -694,30 +1808,31 @@ def _build_card_content(day_row: dict) -> dict:
         label = str(item.get("label", "") or "").strip()
         start = str(item.get("start_date", "") or "")
         end = str(item.get("end_date", "") or "")
+        marker = str(item.get("marker", "PC") or "PC").upper()
         base = label if label else f"{asin} | {sku}".strip(" |")
         base = base if base else "-"
-        key = (base, start, end)
+        key = (base, start, end, marker)
         if key in seen:
             continue
         seen.add(key)
-        item_lines.append(f"{base} ｜ {start}~{end}")
+        item_lines.append(f"[{marker}] {base} | {start}~{end}")
     text = "\n".join(item_lines) if item_lines else "-"
     return {
         "config": {"wide_screen_mode": True},
         "header": {
             "template": "blue",
-            "title": {"tag": "plain_text", "content": f"折扣提醒：{day_row.get('promo_start')} ~ {day_row.get('promo_end')}"},
+            "title": {"tag": "plain_text", "content": f"???{day_row.get('promo_start')} ~ {day_row.get('promo_end')}"},
         },
         "elements": [
-            {"tag": "markdown", "content": f"**提醒日期**：{day_row.get('remind_date')}"},
-            {"tag": "markdown", "content": f"**产品清单**：\n{text}"},
+            {"tag": "markdown", "content": f"**????**?{day_row.get('remind_date')}"},
+            {"tag": "markdown", "content": f"**????**?\n{text}"},
         ],
     }
 
 
-def _send_due_reminders(force_today: str | None = None) -> dict:
+def _send_due_reminders(force_today: str | None = None, dedup: bool = True) -> dict:
     with _reminder_lock:
-        cfg = _load_json_file(FEISHU_FILE)
+        cfg = _db_load_json("feishu_config")
         if not cfg.get("enabled"):
             return {"ok": True, "sent": 0, "skipped": 0, "message": "feishu disabled"}
         app_id = str(cfg.get("app_id", "") or "")
@@ -731,7 +1846,7 @@ def _send_due_reminders(force_today: str | None = None) -> dict:
         due = [r for r in rows if r.get("remind_date") == today_key]
         if not due:
             return {"ok": True, "sent": 0, "skipped": 0, "message": "no due reminder"}
-        log = _load_json_file(REMINDER_LOG_FILE)
+        log = _db_load_json("reminder_log")
         sent_set = set(log.get("sent_keys", []) if isinstance(log.get("sent_keys"), list) else [])
         token = _feishu_get_token(app_id, app_secret)
         sent = 0
@@ -741,7 +1856,7 @@ def _send_due_reminders(force_today: str | None = None) -> dict:
             card = _build_card_content(row)
             for oid in open_ids:
                 uniq = f"{today_key}|{oid}|{row.get('promo_start','')}|{row.get('promo_end','')}"
-                if uniq in sent_set:
+                if dedup and uniq in sent_set:
                     skipped += 1
                     continue
                 try:
@@ -750,7 +1865,8 @@ def _send_due_reminders(force_today: str | None = None) -> dict:
                     _send_feishu_message(token, oid, "text", {"text": msg})
                 sent_set.add(uniq)
                 sent += 1
-        _save_json_file(REMINDER_LOG_FILE, {"sent_keys": sorted(sent_set)})
+        if dedup:
+            _db_save_json("reminder_log", {"sent_keys": sorted(sent_set)})
         return {"ok": True, "sent": sent, "skipped": skipped, "message": "done"}
 
 
@@ -770,10 +1886,61 @@ async def calculate(req: CalcRequest) -> CalcResponse:
         req.history_dates,
         req.future_days,
         req.selected_offsets,
+        req.marker_overrides,
         req.mode,
         req.preferred_start,
         req.preferred_end,
         req.recommend,
+    )
+
+
+@app.post("/api/amazon/deal", response_model=AmazonDealResponse)
+async def parse_amazon_deal(req: AmazonDealRequest) -> AmazonDealResponse:
+    url = req.url.strip()
+    raw_html = req.html or ""
+    if not url and not raw_html.strip():
+        raise HTTPException(status_code=400, detail="url or html is required")
+    try:
+        page_html = raw_html if raw_html.strip() else await asyncio.to_thread(_fetch_amazon_page, url, req.headers)
+        parsed = await asyncio.to_thread(_parse_amazon_deal_fields, page_html)
+    except urllib.error.HTTPError as e:
+        raise HTTPException(status_code=400, detail=f"amazon request failed: {e.code}") from e
+    except urllib.error.URLError as e:
+        raise HTTPException(status_code=400, detail=f"amazon request failed: {e.reason}") from e
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"amazon parse failed: {e}") from e
+    return AmazonDealResponse(url=url, **parsed)
+
+
+@app.get("/api/asin-monitor/config", response_model=AsinMonitorConfigResponse)
+async def get_asin_monitor_config() -> AsinMonitorConfigResponse:
+    data = await asyncio.to_thread(_load_asin_monitor_config)
+    return AsinMonitorConfigResponse(**data)
+
+
+@app.post("/api/asin-monitor/config")
+async def set_asin_monitor_config(req: AsinMonitorConfigRequest) -> dict:
+    current = await asyncio.to_thread(_load_asin_monitor_config)
+    current.update(req.model_dump())
+    current["asins"] = _normalize_asin_list(current.get("asins", []))
+    await asyncio.to_thread(_save_asin_monitor_config, current)
+    return {"ok": True}
+
+
+@app.get("/api/asin-monitor/results", response_model=AsinMonitorResultsResponse)
+async def get_asin_monitor_results(limit: int = 200) -> AsinMonitorResultsResponse:
+    rows = await asyncio.to_thread(_load_asin_monitor_results)
+    rows = rows[: max(1, min(limit, 1000))]
+    return AsinMonitorResultsResponse(results=[AsinMonitorResult(**row) for row in rows])
+
+
+@app.post("/api/asin-monitor/run-now", response_model=AsinMonitorRunResponse)
+async def run_asin_monitor_now() -> AsinMonitorRunResponse:
+    rows = await asyncio.to_thread(_execute_asin_monitor_run, True)
+    return AsinMonitorRunResponse(
+        ok=True,
+        count=len(rows),
+        results=[AsinMonitorResult(**row) for row in rows],
     )
 
 
@@ -789,6 +1956,7 @@ async def get_shared_state() -> SharedStateResponse:
         custom_end=int(data.get("custom_end", 14) or 14),
         selected_key=str(data.get("selected_key", "") or ""),
         file_name=str(data.get("file_name", "") or ""),
+        marker_mode=str(data.get("marker_mode", "PD") or "PD"),
     )
 
 
@@ -831,7 +1999,7 @@ async def head_source_file() -> dict:
 
 @app.get("/api/feishu-config", response_model=FeishuConfigResponse)
 async def get_feishu_config() -> FeishuConfigResponse:
-    data = await asyncio.to_thread(_load_json_file, FEISHU_FILE)
+    data = await asyncio.to_thread(_db_load_json, "feishu_config")
     return FeishuConfigResponse(
         enabled=bool(data.get("enabled", False)),
         app_id=str(data.get("app_id", "") or ""),
@@ -842,14 +2010,14 @@ async def get_feishu_config() -> FeishuConfigResponse:
 
 @app.post("/api/feishu-config")
 async def set_feishu_config(req: FeishuConfigRequest) -> dict:
-    old = await asyncio.to_thread(_load_json_file, FEISHU_FILE)
+    old = await asyncio.to_thread(_db_load_json, "feishu_config")
     payload = old.copy()
     payload["enabled"] = bool(req.enabled)
     payload["app_id"] = req.app_id.strip()
     payload["open_ids"] = [x.strip() for x in req.open_ids if x.strip()]
     if req.app_secret.strip():
         payload["app_secret"] = req.app_secret.strip()
-    await asyncio.to_thread(_save_json_file, FEISHU_FILE, payload)
+    await asyncio.to_thread(_db_save_json, "feishu_config", payload)
     return {"ok": True}
 
 
@@ -862,13 +2030,13 @@ async def preview_reminders() -> list[ReminderDay]:
 
 @app.post("/api/reminders/send-now")
 async def send_reminders_now() -> dict:
-    return await asyncio.to_thread(_send_due_reminders)
+    return await asyncio.to_thread(_send_due_reminders, None, False)
 
 
 @app.get("/api/feishu/departments")
 async def feishu_departments() -> dict:
     try:
-        cfg = await asyncio.to_thread(_load_json_file, FEISHU_FILE)
+        cfg = await asyncio.to_thread(_db_load_json, "feishu_config")
         app_id = str(cfg.get("app_id", "") or "")
         app_secret = str(cfg.get("app_secret", "") or "")
         if not app_id or not app_secret:
@@ -887,7 +2055,7 @@ async def feishu_departments() -> dict:
 @app.get("/api/feishu/users")
 async def feishu_users(department_id: str) -> dict:
     try:
-        cfg = await asyncio.to_thread(_load_json_file, FEISHU_FILE)
+        cfg = await asyncio.to_thread(_db_load_json, "feishu_config")
         app_id = str(cfg.get("app_id", "") or "")
         app_secret = str(cfg.get("app_secret", "") or "")
         if not app_id or not app_secret:
@@ -915,12 +2083,17 @@ async def feishu_users(department_id: str) -> dict:
 
 @app.on_event("startup")
 async def startup_event() -> None:
+    await asyncio.to_thread(_ensure_sqlite_ready)
     th = threading.Thread(target=_reminder_worker, daemon=True, name="feishu-reminder-worker")
     th.start()
+    th2 = threading.Thread(target=_asin_monitor_worker, daemon=True, name="amazon-asin-monitor-worker")
+    th2.start()
+
+
 @app.get("/api/feishu/scope-users")
 async def feishu_scope_users() -> dict:
     try:
-        cfg = await asyncio.to_thread(_load_json_file, FEISHU_FILE)
+        cfg = await asyncio.to_thread(_db_load_json, "feishu_config")
         app_id = str(cfg.get("app_id", "") or "")
         app_secret = str(cfg.get("app_secret", "") or "")
         if not app_id or not app_secret:
