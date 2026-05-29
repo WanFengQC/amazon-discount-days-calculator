@@ -17,9 +17,13 @@ import urllib.error
 from amazon_deal_extractor import (
     DEFAULT_PROFILE_DIR,
     _auto_prepare_offer_context,
+    _apply_amazon_us_preferences,
     _build_url,
     _extract_from_html,
+    _needs_us_storefront,
+    _normalize_us_storefront,
     _read_page_state,
+    build_browser_launch_kwargs,
 )
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse
@@ -701,6 +705,37 @@ def _normalize_price(value: str | None) -> str | None:
     return amount
 
 
+def _price_to_number(value: str | None) -> float | None:
+    if not value:
+        return None
+    match = re.search(r"(\d[\d,]*(?:\.\d{2})?)", value)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _infer_discount_strength(
+    discount_price: str | None,
+    list_price: str | None,
+    typical_price: str | None,
+    regular_price: str | None,
+) -> str | None:
+    sale = _price_to_number(discount_price)
+    if not sale or sale <= 0:
+        return None
+    for candidate in (list_price, regular_price, typical_price):
+        reference = _price_to_number(candidate)
+        if not reference or reference <= sale:
+            continue
+        pct = round((reference - sale) / reference * 100)
+        if pct > 0:
+            return f"-{pct}%"
+    return None
+
+
 def _resolve_asin_monitor_image_url(row: dict) -> str:
     image_url = str(row.get("image_url", "") or "").strip()
     if image_url:
@@ -933,6 +968,14 @@ def _parse_amazon_deal_fields(page_html: str) -> dict:
             )
         )
 
+    if not discount_strength:
+        discount_strength = _infer_discount_strength(
+            discount_price,
+            list_price,
+            typical_price,
+            regular_price,
+        )
+
     return {
         "discount_type": discount_type,
         "discount_strength": discount_strength,
@@ -961,9 +1004,8 @@ def _run_asin_monitor_once(config: dict) -> list[dict]:
 
     with sync_playwright() as p:
         try:
-            context = p.chromium.launch_persistent_context(
+            launch_kwargs = dict(
                 user_data_dir=str(profile_dir),
-                channel="msedge",
                 headless=headless,
                 locale="en-US",
                 timezone_id="America/Los_Angeles",
@@ -974,12 +1016,22 @@ def _run_asin_monitor_once(config: dict) -> list[dict]:
                     "Chrome/148.0.0.0 Safari/537.36"
                 ),
             )
+            try:
+                context = p.chromium.launch_persistent_context(
+                    **build_browser_launch_kwargs(),
+                    **launch_kwargs,
+                )
+            except Exception as e:
+                if "Chromium distribution 'msedge' is not found" not in str(e):
+                    raise
+                context = p.chromium.launch_persistent_context(**launch_kwargs)
         except Exception as e:
             raise RuntimeError(
-                f"failed to open Edge persistent profile ({profile_name}); "
-                f"close existing Edge windows using this monitor profile and retry: {e}"
+                f"failed to open persistent browser profile ({profile_name}); "
+                f"close existing browser windows using this monitor profile and retry: {e}"
             ) from e
         try:
+            _apply_amazon_us_preferences(context)
             page = context.pages[0] if context.pages else context.new_page()
             for asin in asins:
                 url = _build_url(asin, None)
@@ -995,6 +1047,12 @@ def _run_asin_monitor_once(config: dict) -> list[dict]:
                         attempt_logs.append(f"[attempt {attempts}] page loaded: {page.url}")
                         _auto_prepare_offer_context(page, us_zip)
                         page.wait_for_timeout(3000)
+                        precheck_state = _read_page_state(page)
+                        if _needs_us_storefront(precheck_state):
+                            attempt_logs.append(
+                                f"[attempt {attempts}] detected localized storefront or unavailable localized offer; forcing en-US/USD storefront"
+                            )
+                            _normalize_us_storefront(page, url, us_zip)
                         state = _read_page_state(page)
                         parsed = _extract_from_html(state.html, state.body_text)
                         fetched_at = _utc_now_iso()

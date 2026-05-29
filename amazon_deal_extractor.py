@@ -2,6 +2,7 @@ import argparse
 import html
 import json
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,13 @@ class ExtractState:
     reason: str
     body_text: str
     html: str
+
+
+def build_browser_launch_kwargs() -> dict:
+    chromium_path = shutil.which("chromium") or shutil.which("chromium-browser")
+    if chromium_path:
+        return {"executable_path": chromium_path}
+    return {"channel": "msedge"}
 
 
 def _try_click(page, selectors: list[str], timeout_ms: int = 2500) -> bool:
@@ -69,6 +77,37 @@ def _normalize_price(value: str | None) -> str | None:
     if amount and amount[0].isdigit():
         amount = f"${amount}"
     return amount
+
+
+def _price_to_number(value: str | None) -> float | None:
+    if not value:
+        return None
+    match = re.search(r"(\d[\d,]*(?:\.\d{2})?)", value)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _infer_discount_strength(
+    discount_price: str | None,
+    list_price: str | None,
+    typical_price: str | None,
+    regular_price: str | None,
+) -> str | None:
+    sale = _price_to_number(discount_price)
+    if not sale or sale <= 0:
+        return None
+    for candidate in (list_price, regular_price, typical_price):
+        reference = _price_to_number(candidate)
+        if not reference or reference <= sale:
+            continue
+        pct = round((reference - sale) / reference * 100)
+        if pct > 0:
+            return f"-{pct}%"
+    return None
 
 
 def _normalize_image_url(value: str | None) -> str | None:
@@ -172,7 +211,6 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
             r'"savingsPercentage"\s*:\s*"(-?\d+%)"',
             r'reinventPriceSavingsPercentageMargin[^>]*>\s*(?:<span[^>]*>)?\s*(-\d+%)\s*<',
             r"\b(-\d+%)\b",
-            r"\b(\d+%\s+off)\b",
         ],
     )
 
@@ -272,6 +310,14 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
             )
         )
 
+    if not discount_strength:
+        discount_strength = _infer_discount_strength(
+            discount_price,
+            list_price,
+            typical_price,
+            regular_price,
+        )
+
     color = _extract_selected_variant_from_twister(html) or _first_match(
         html,
         [
@@ -317,17 +363,23 @@ def _read_page_state(page) -> ExtractState:
     if "opfcaptcha.amazon.com" in html or "Continue shopping" in body_text:
         return ExtractState("blocked", "amazon presented a verification or anti-bot page", body_text, html)
 
-    if "No featured offers available" in body_text:
+    if "No featured offers available" in body_text or "没有可用的推荐报价" in body_text:
         return ExtractState("no_offer", "current session has no featured offer for this product", body_text, html)
 
-    if "cannot be shipped to your selected delivery location" in body_text:
+    if (
+        "cannot be shipped to your selected delivery location" in body_text
+        or "无法配送至您选择的收货地址" in body_text
+    ):
         return ExtractState("no_offer", "current delivery location cannot receive this item", body_text, html)
 
     if (
         "Add to Cart" in body_text
+        or "Buy Now" in body_text
         or "Typical price" in body_text
         or "List Price" in body_text
-        or "dealBadge_feature_div" in html
+        or "Regular Price" in body_text
+        or "Prime Member Price" in body_text
+        or '"priceToPay"' in html
     ):
         return ExtractState("ready", "product page is available for extraction", body_text, html)
 
@@ -390,11 +442,57 @@ def _auto_prepare_offer_context(page, us_zip: str) -> None:
     if (
         "cannot be shipped to your selected delivery location" in state.body_text
         or "No featured offers available" in state.body_text
+        or "没有可用的推荐报价" in state.body_text
+        or "无法配送至您选择的收货地址" in state.body_text
         or "Deliver to Taiwan" in state.body_text
+        or "配送至台湾" in state.body_text
     ):
         if _try_set_us_zip(page, us_zip):
             page.wait_for_load_state("domcontentloaded", timeout=30000)
             page.wait_for_timeout(4000)
+
+
+def _apply_amazon_us_preferences(context) -> None:
+    context.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
+    context.add_cookies(
+        [
+            {
+                "name": "lc-main",
+                "value": "en_US",
+                "domain": ".amazon.com",
+                "path": "/",
+            },
+            {
+                "name": "i18n-prefs",
+                "value": "USD",
+                "domain": ".amazon.com",
+                "path": "/",
+            },
+        ]
+    )
+
+
+def _needs_us_storefront(state: ExtractState) -> bool:
+    return any(
+        marker in state.body_text
+        for marker in [
+            "没有可用的推荐报价",
+            "无法配送至您选择的收货地址",
+            "配送至台湾",
+            "标准价:",
+            "CNY",
+        ]
+    )
+
+
+def _normalize_us_storefront(page, url: str, us_zip: str) -> None:
+    page.goto("https://www.amazon.com/?language=en_US", wait_until="domcontentloaded", timeout=90000)
+    page.wait_for_timeout(3000)
+    _try_set_us_zip(page, us_zip)
+    page.goto(url, wait_until="domcontentloaded", timeout=90000)
+    page.wait_for_timeout(5000)
+    _auto_prepare_offer_context(page, us_zip)
+    page.wait_for_timeout(3000)
 
 
 def _manual_gate(state: ExtractState) -> None:
@@ -430,9 +528,8 @@ def main() -> int:
     profile_dir.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
+        launch_kwargs = dict(
             user_data_dir=str(profile_dir),
-            channel="msedge",
             headless=args.headless,
             locale="en-US",
             timezone_id="America/Los_Angeles",
@@ -444,10 +541,22 @@ def main() -> int:
             ),
         )
         try:
+            context = p.chromium.launch_persistent_context(
+                **build_browser_launch_kwargs(),
+                **launch_kwargs,
+            )
+        except Exception as e:
+            if "Chromium distribution 'msedge' is not found" not in str(e):
+                raise
+            context = p.chromium.launch_persistent_context(**launch_kwargs)
+        try:
+            _apply_amazon_us_preferences(context)
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(url, wait_until="domcontentloaded", timeout=args.timeout_ms)
             page.wait_for_timeout(5000)
             _auto_prepare_offer_context(page, args.us_zip)
+            if _needs_us_storefront(_read_page_state(page)):
+                _normalize_us_storefront(page, url, args.us_zip)
             state = _read_page_state(page)
 
             if args.manual:

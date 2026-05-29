@@ -5,5 +5,8 @@ services:
     container_name: amazon-discount-days-calculator
     ports:
       - "8010:8010"
+    volumes:
+      - ./data:/app/data
+      - ./shared_state.json:/app/shared_state.json
     restart: unless-stopped
 

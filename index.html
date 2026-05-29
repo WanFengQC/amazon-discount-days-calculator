@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>亚马逊折扣天数计算器</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
   <style>
     :root {
       --bg: #f1f7ff;
@@ -466,108 +467,35 @@
     }
     .trend-toolbar {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
-      gap: 12px;
+      gap: 14px;
       flex-wrap: wrap;
-      margin-bottom: 8px;
-    }
-    .trend-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .trend-actions button.active {
-      background: linear-gradient(180deg, #2f80ed 0%, #2a72d4 100%);
-      border-color: #2f80ed;
-      color: #fff;
+      padding: 16px 18px 0;
     }
     .trend-summary {
       font-size: 13px;
       color: #5f7f9d;
-      margin-bottom: 12px;
+      line-height: 1.55;
+      padding-top: 2px;
     }
     .trend-chart-wrap {
-      border: 1px solid #dce8f7;
-      border-radius: 12px;
-      background: #fcfdff;
-      padding: 14px;
-      position: relative;
-    }
-    .trend-chart-svg {
-      width: 100%;
-      height: auto;
-      display: block;
+      padding: 10px 18px 18px;
+      background: #fff;
     }
     .trend-empty {
-      min-height: 280px;
+      min-height: 520px;
       display: flex;
       align-items: center;
       justify-content: center;
       color: #7b93af;
       font-size: 14px;
+      border-top: 1px solid #e2ebfb;
     }
-    .trend-tooltip {
-      position: absolute;
-      pointer-events: none;
-      z-index: 2;
-      min-width: 120px;
-      max-width: 220px;
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid #c8dcf5;
-      background: rgba(255, 255, 255, 0.98);
-      box-shadow: 0 10px 24px rgba(31, 74, 124, 0.18);
-      color: #1b3f6d;
-      font-size: 12px;
-      line-height: 1.45;
-      transform: translate(-50%, calc(-100% - 12px));
-      opacity: 0;
-      transition: opacity 0.12s ease;
-      white-space: nowrap;
-    }
-    .trend-tooltip.show {
-      opacity: 1;
-    }
-    .trend-tooltip-date {
-      color: #5f7f9d;
-    }
-    .trend-tooltip-value {
-      font-weight: 700;
-      color: #1f5ea8;
-    }
-    .trend-slider-wrap {
-      margin-top: 14px;
-      display: grid;
-      gap: 8px;
-    }
-    .trend-slider-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-      font-size: 13px;
-      color: #5f7f9d;
-    }
-    .trend-slider {
+    .trend-chart-host {
       width: 100%;
-      accent-color: #2f80ed;
-    }
-    .trend-legend {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: #355d8e;
-      margin-top: 10px;
-    }
-    .trend-legend-line {
-      width: 18px;
-      height: 3px;
-      border-radius: 999px;
-      background: #2f80ed;
+      height: 520px;
+      border-top: 1px solid #e2ebfb;
     }
     .monitor-pill {
       display: inline-flex;
@@ -1194,29 +1122,9 @@
     </div>
     <div class="trend-toolbar">
       <div id="asinMonitorTrendSubtitle" class="trend-summary">-</div>
-      <div class="trend-actions">
-        <button id="asinTrendWeekBtn" type="button" class="secondary">最近一周</button>
-        <button id="asinTrendMonthBtn" type="button" class="secondary">最近一月</button>
-        <button id="asinTrendAllBtn" type="button" class="secondary">全部</button>
-      </div>
     </div>
     <div class="trend-chart-wrap">
       <div id="asinMonitorTrendChart" class="trend-empty">暂无可用价格趋势数据。</div>
-      <div id="asinMonitorTrendTooltip" class="trend-tooltip" aria-hidden="true">
-        <div id="asinMonitorTrendTooltipDate" class="trend-tooltip-date"></div>
-        <div id="asinMonitorTrendTooltipValue" class="trend-tooltip-value"></div>
-      </div>
-      <div class="trend-legend">
-        <span class="trend-legend-line"></span>
-        <span id="asinMonitorTrendLegend">价格趋势</span>
-      </div>
-    </div>
-    <div class="trend-slider-wrap">
-      <div class="trend-slider-head">
-        <label for="asinTrendRangeInput">自定义时间范围</label>
-        <div id="asinTrendRangeLabel">最近 30 天</div>
-      </div>
-      <input id="asinTrendRangeInput" class="trend-slider" type="range" min="1" max="30" value="30" />
     </div>
   </section>
 </div>
@@ -1280,15 +1188,7 @@
   const asinMonitorTrendTitle = document.getElementById("asinMonitorTrendTitle");
   const asinMonitorTrendSubtitle = document.getElementById("asinMonitorTrendSubtitle");
   const asinMonitorTrendChart = document.getElementById("asinMonitorTrendChart");
-  const asinMonitorTrendTooltip = document.getElementById("asinMonitorTrendTooltip");
-  const asinMonitorTrendTooltipDate = document.getElementById("asinMonitorTrendTooltipDate");
-  const asinMonitorTrendTooltipValue = document.getElementById("asinMonitorTrendTooltipValue");
-  const asinMonitorTrendLegend = document.getElementById("asinMonitorTrendLegend");
-  const asinTrendWeekBtn = document.getElementById("asinTrendWeekBtn");
-  const asinTrendMonthBtn = document.getElementById("asinTrendMonthBtn");
-  const asinTrendAllBtn = document.getElementById("asinTrendAllBtn");
-  const asinTrendRangeInput = document.getElementById("asinTrendRangeInput");
-  const asinTrendRangeLabel = document.getElementById("asinTrendRangeLabel");
+  let asinTrendChart = null;
   const asinMonitorSummary = document.getElementById("asinMonitorSummary");
   const asinMonitorInput = document.getElementById("asinMonitorInput");
   const asinMonitorZip = document.getElementById("asinMonitorZip");
@@ -1335,8 +1235,6 @@
   const asinMonitorTrendState = {
     asin: "",
     fieldKey: "discount_price",
-    rangeDays: 30,
-    maxDays: 30,
   };
   function todayIso() {
     const t = new Date();
@@ -1938,6 +1836,22 @@
   function formatTrendPrice(value) {
     return Number.isFinite(value) ? `$${value.toFixed(2)}` : "-";
   }
+  function ensureAsinTrendChart() {
+    if (!window.echarts || !asinMonitorTrendChart) return null;
+    if (!asinTrendChart) {
+      asinTrendChart = window.echarts.init(asinMonitorTrendChart);
+    }
+    return asinTrendChart;
+  }
+  function disposeAsinTrendChart() {
+    if (asinTrendChart) {
+      asinTrendChart.dispose();
+      asinTrendChart = null;
+    }
+  }
+  function resizeAsinTrendChart() {
+    if (asinTrendChart) asinTrendChart.resize();
+  }
   function getAsinTrendPoints(asin, fieldKey) {
     const grouped = new Map();
     for (const row of asinMonitorAllRows) {
@@ -1953,160 +1867,89 @@
     }
     return Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date));
   }
-  function getFilteredTrendPoints(points, rangeDays) {
-    if (!Array.isArray(points) || !points.length) return [];
-    if (!Number.isFinite(rangeDays) || rangeDays <= 0) return points.slice();
-    const latest = points[points.length - 1].date;
-    return points.filter((point) => diffDaysIso(point.date, latest) <= 0 && diffDaysIso(point.date, latest) < rangeDays);
-  }
   function renderAsinTrendChart(points) {
     if (!points.length) {
       asinMonitorTrendChart.className = "trend-empty";
       asinMonitorTrendChart.textContent = "暂无可用价格趋势数据。";
-      asinMonitorTrendTooltip.classList.remove("show");
+      disposeAsinTrendChart();
       return;
     }
-    const width = 980;
-    const height = 340;
-    const pad = { top: 18, right: 18, bottom: 42, left: 58 };
-    const innerW = width - pad.left - pad.right;
-    const innerH = height - pad.top - pad.bottom;
-    const values = points.map((point) => point.value);
-    let minV = Math.min(...values);
-    let maxV = Math.max(...values);
-    if (minV === maxV) {
-      minV -= 1;
-      maxV += 1;
-    }
-    const yPad = Math.max((maxV - minV) * 0.12, 0.5);
-    minV = Math.max(0, minV - yPad);
-    maxV = maxV + yPad;
-    const xFor = (idx) => pad.left + (points.length === 1 ? innerW / 2 : (idx / (points.length - 1)) * innerW);
-    const yFor = (value) => pad.top + (1 - ((value - minV) / (maxV - minV))) * innerH;
-    const linePoints = points.map((point, idx) => `${xFor(idx).toFixed(2)},${yFor(point.value).toFixed(2)}`).join(" ");
-    const areaPoints = `${pad.left},${pad.top + innerH} ${linePoints} ${xFor(points.length - 1)},${pad.top + innerH}`;
-    const yTicks = 4;
-    const xTicks = Math.min(6, points.length);
-    const yGrid = [];
-    for (let i = 0; i <= yTicks; i++) {
-      const value = minV + ((maxV - minV) * i / yTicks);
-      const y = yFor(value);
-      yGrid.push(`
-        <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="#d9e6f7" stroke-width="1" />
-        <text x="${pad.left - 10}" y="${y + 4}" text-anchor="end" font-size="12" fill="#6481a3">${formatTrendPrice(value)}</text>
-      `);
-    }
-    const xLabels = [];
-    for (let i = 0; i < xTicks; i++) {
-      const idx = xTicks === 1 ? 0 : Math.round((i / (xTicks - 1)) * (points.length - 1));
-      const x = xFor(idx);
-      xLabels.push(`
-        <text x="${x}" y="${height - 14}" text-anchor="middle" font-size="12" fill="#6481a3">${points[idx].date}</text>
-      `);
-    }
-    const dots = points.map((point, idx) => {
-      const x = xFor(idx);
-      const y = yFor(point.value);
-      return `<circle class="trend-point" data-date="${point.date}" data-value="${formatTrendPrice(point.value)}" cx="${x}" cy="${y}" r="4.5" fill="#2f80ed"></circle>`;
-    }).join("");
-    asinMonitorTrendChart.className = "";
-    asinMonitorTrendChart.innerHTML = `
-      <svg class="trend-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="价格趋势图">
-        <defs>
-          <linearGradient id="trendAreaFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="rgba(47,128,237,0.24)" />
-            <stop offset="100%" stop-color="rgba(47,128,237,0.04)" />
-          </linearGradient>
-        </defs>
-        ${yGrid.join("")}
-        <polyline points="${areaPoints}" fill="url(#trendAreaFill)" stroke="none"></polyline>
-        <polyline points="${linePoints}" fill="none" stroke="#2f80ed" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>
-        ${dots}
-        ${xLabels.join("")}
-      </svg>
-    `;
-    const svg = asinMonitorTrendChart.querySelector(".trend-chart-svg");
-    const svgRect = () => svg?.getBoundingClientRect();
-    const placeTooltip = (clientX, clientY, dateText, valueText) => {
-      const rect = svgRect();
-      const hostRect = asinMonitorTrendChart.getBoundingClientRect();
-      if (!rect || !hostRect) return;
-      const left = clientX - hostRect.left;
-      const top = clientY - hostRect.top;
-      asinMonitorTrendTooltipDate.textContent = dateText;
-      asinMonitorTrendTooltipValue.textContent = valueText;
-      asinMonitorTrendTooltip.style.left = `${left}px`;
-      asinMonitorTrendTooltip.style.top = `${top}px`;
-      asinMonitorTrendTooltip.classList.add("show");
-    };
-    asinMonitorTrendChart.querySelectorAll(".trend-point").forEach((pointEl) => {
-      pointEl.addEventListener("mouseenter", (event) => {
-        placeTooltip(
-          event.clientX,
-          event.clientY,
-          pointEl.getAttribute("data-date") || "",
-          pointEl.getAttribute("data-value") || ""
-        );
-      });
-      pointEl.addEventListener("mousemove", (event) => {
-        placeTooltip(
-          event.clientX,
-          event.clientY,
-          pointEl.getAttribute("data-date") || "",
-          pointEl.getAttribute("data-value") || ""
-        );
-      });
-      pointEl.addEventListener("mouseleave", () => {
-        asinMonitorTrendTooltip.classList.remove("show");
-      });
-    });
-  }
-  function updateTrendQuickButtons() {
-    asinTrendWeekBtn.classList.toggle("active", asinMonitorTrendState.rangeDays === 7);
-    asinTrendMonthBtn.classList.toggle("active", asinMonitorTrendState.rangeDays === 30);
-    asinTrendAllBtn.classList.toggle("active", asinMonitorTrendState.rangeDays >= asinMonitorTrendState.maxDays);
+    asinMonitorTrendChart.className = "trend-chart-host";
+    asinMonitorTrendChart.textContent = "";
+    const chart = ensureAsinTrendChart();
+    if (!chart) return;
+    const labels = points.map((point) => point.date);
+    const prices = points.map((point) => point.value);
+    chart.setOption(
+      {
+        grid: { left: 50, right: 30, top: 52, bottom: 42, containLabel: true },
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "line", lineStyle: { color: "#c8d7ed", width: 1, type: "dashed" } },
+          formatter: (params) => {
+            const item = Array.isArray(params) ? params[0] : params;
+            const index = item?.dataIndex ?? 0;
+            return [
+              `<div>${labels[index] || "-"}</div>`,
+              `${item?.marker || ""} 价格: ${formatTrendPrice(typeof item?.value === "number" ? item.value : null)}`,
+            ].join("<br/>");
+          },
+        },
+        xAxis: {
+          type: "category",
+          data: labels,
+          boundaryGap: false,
+          axisLabel: { rotate: 35 },
+        },
+        yAxis: {
+          type: "value",
+          name: "价格",
+          axisLabel: {
+            formatter: (value) => formatTrendPrice(Number(value)),
+          },
+        },
+        series: [
+          {
+            name: "价格",
+            type: "line",
+            smooth: true,
+            data: prices,
+            symbol: "circle",
+            symbolSize: 6,
+            lineStyle: { width: 2.4, color: "#2f63da" },
+            itemStyle: { color: "#2f63da" },
+            areaStyle: {
+              color: "rgba(47, 99, 218, 0.12)",
+            },
+          },
+        ],
+      },
+      { notMerge: true }
+    );
   }
   function renderAsinMonitorTrend() {
     const field = asinMonitorPriceFields.find((item) => item.key === asinMonitorTrendState.fieldKey) || asinMonitorPriceFields[0];
-    const allPoints = getAsinTrendPoints(asinMonitorTrendState.asin, asinMonitorTrendState.fieldKey);
-    const latestPoint = allPoints[allPoints.length - 1] || null;
-    const earliestPoint = allPoints[0] || null;
-    const spanDays = allPoints.length && earliestPoint && latestPoint ? diffDaysIso(earliestPoint.date, latestPoint.date) + 1 : 1;
-    asinMonitorTrendState.maxDays = Math.max(1, spanDays);
-    if (asinMonitorTrendState.rangeDays > asinMonitorTrendState.maxDays) {
-      asinMonitorTrendState.rangeDays = asinMonitorTrendState.maxDays;
-    }
-    asinTrendRangeInput.min = "1";
-    asinTrendRangeInput.max = String(Math.max(1, asinMonitorTrendState.maxDays));
-    asinTrendRangeInput.value = String(Math.max(1, asinMonitorTrendState.rangeDays));
-    asinTrendRangeLabel.textContent = asinMonitorTrendState.rangeDays >= asinMonitorTrendState.maxDays
-      ? `全部 ${asinMonitorTrendState.maxDays} 天`
-      : `最近 ${asinMonitorTrendState.rangeDays} 天`;
+    const points = getAsinTrendPoints(asinMonitorTrendState.asin, asinMonitorTrendState.fieldKey);
     asinMonitorTrendTitle.textContent = `${asinMonitorTrendState.asin || "-"} · ${field.label} 趋势`;
-    asinMonitorTrendLegend.textContent = field.label;
-    const filteredPoints = getFilteredTrendPoints(allPoints, asinMonitorTrendState.rangeDays);
-    if (filteredPoints.length) {
-      const first = filteredPoints[0];
-      const last = filteredPoints[filteredPoints.length - 1];
-      asinMonitorTrendSubtitle.textContent = `${first.date} ~ ${last.date}，共 ${filteredPoints.length} 个采样点，最新价 ${formatTrendPrice(last.value)}`;
+    if (points.length) {
+      const first = points[0];
+      const last = points[points.length - 1];
+      asinMonitorTrendSubtitle.textContent = `${first.date} ~ ${last.date}，共 ${points.length} 个采样点，最新价 ${formatTrendPrice(last.value)}`;
     } else {
-      asinMonitorTrendSubtitle.textContent = "当前范围内暂无可用价格数据。";
+      asinMonitorTrendSubtitle.textContent = "当前暂无可用价格数据。";
     }
-    updateTrendQuickButtons();
-    renderAsinTrendChart(filteredPoints);
+    renderAsinTrendChart(points);
   }
   function openAsinMonitorTrend(asin, fieldKey) {
-    const allPoints = getAsinTrendPoints(asin, fieldKey);
     asinMonitorTrendState.asin = String(asin || "").trim().toUpperCase();
     asinMonitorTrendState.fieldKey = fieldKey;
-    asinMonitorTrendState.maxDays = Math.max(1, allPoints.length > 1 ? diffDaysIso(allPoints[0].date, allPoints[allPoints.length - 1].date) + 1 : 30);
-    asinMonitorTrendState.rangeDays = Math.min(30, asinMonitorTrendState.maxDays);
-    if (asinMonitorTrendState.rangeDays < 1) asinMonitorTrendState.rangeDays = 1;
-    renderAsinMonitorTrend();
     asinMonitorTrendModal.classList.add("show");
+    renderAsinMonitorTrend();
+    requestAnimationFrame(() => resizeAsinTrendChart());
   }
   function closeAsinMonitorTrend() {
     asinMonitorTrendModal.classList.remove("show");
+    disposeAsinTrendChart();
   }
   function updateAsinMonitorSummary(data) {
     const asins = Array.isArray(data?.asins) ? data.asins : [];
@@ -2811,22 +2654,6 @@
   asinMonitorTrendModal.addEventListener("click", (e) => {
     if (e.target === asinMonitorTrendModal) closeAsinMonitorTrend();
   });
-  asinTrendWeekBtn.addEventListener("click", () => {
-    asinMonitorTrendState.rangeDays = Math.min(7, asinMonitorTrendState.maxDays);
-    renderAsinMonitorTrend();
-  });
-  asinTrendMonthBtn.addEventListener("click", () => {
-    asinMonitorTrendState.rangeDays = Math.min(30, asinMonitorTrendState.maxDays);
-    renderAsinMonitorTrend();
-  });
-  asinTrendAllBtn.addEventListener("click", () => {
-    asinMonitorTrendState.rangeDays = asinMonitorTrendState.maxDays;
-    renderAsinMonitorTrend();
-  });
-  asinTrendRangeInput.addEventListener("input", () => {
-    asinMonitorTrendState.rangeDays = Math.max(1, Number(asinTrendRangeInput.value || 1));
-    renderAsinMonitorTrend();
-  });
   asinMonitorDateSelect.addEventListener("change", () => {
     asinMonitorSelectedDate = asinMonitorDateSelect.value || "";
     renderAsinMonitorResults(asinMonitorAllRows);
@@ -2937,6 +2764,7 @@
   renderMarkerModeButtons();
   updateMarkerFloatPosition();
   window.addEventListener("resize", updateMarkerFloatPosition);
+  window.addEventListener("resize", resizeAsinTrendChart);
   window.addEventListener("scroll", updateMarkerFloatPosition, { passive: true });
 </script>
 </body>
