@@ -622,6 +622,25 @@
       background: #fff3df;
       color: #b06b00;
     }
+    .monitor-loading-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: #5f7f9d;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .monitor-loading-spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #d6e4f8;
+      border-top-color: #3f78d8;
+      border-radius: 50%;
+      animation: monitorSpin 0.85s linear infinite;
+    }
+    @keyframes monitorSpin {
+      to { transform: rotate(360deg); }
+    }
 
     .week-header {
       display: grid;
@@ -1357,6 +1376,7 @@
   let asinMonitorAllRows = [];
   let asinMonitorSelectedDate = "";
   let asinMonitorConfiguredAsins = [];
+  let asinMonitorResultsLoading = false;
   const asinMonitorPriceFields = [
     { key: "discount_price", label: "discount_price" },
     { key: "list_price", label: "List Price" },
@@ -1808,10 +1828,32 @@
     asinMonitorNextDateBtn.disabled = idx < 0 || idx >= dates.length - 1;
     asinMonitorDateLabel.textContent = `当前显示 ${asinMonitorSelectedDate} 的数据，共 ${visibleRows.filter(row => String(row.fetch_date || "") === asinMonitorSelectedDate).length} 条。`;
   }
+  function setAsinMonitorResultsLoading(loading) {
+    asinMonitorResultsLoading = !!loading;
+    renderAsinMonitorResults(asinMonitorAllRows);
+  }
   function renderAsinMonitorResults(rows) {
     asinMonitorAllRows = Array.isArray(rows) ? rows.slice() : [];
     updateAsinMonitorDateControls(asinMonitorAllRows);
     asinMonitorResults.innerHTML = "";
+    if (asinMonitorResultsLoading) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 10;
+      const wrap = document.createElement("div");
+      wrap.className = "monitor-loading-wrap";
+      const spinner = document.createElement("span");
+      spinner.className = "monitor-loading-spinner";
+      const text = document.createElement("span");
+      text.textContent = "正在加载抓取数据...";
+      wrap.appendChild(spinner);
+      wrap.appendChild(text);
+      td.appendChild(wrap);
+      tr.appendChild(td);
+      asinMonitorResults.appendChild(tr);
+      requestAnimationFrame(syncMonitorStickyHeader);
+      return;
+    }
     const visibleRows = asinMonitorSelectedDate
       ? getVisibleAsinMonitorRows(asinMonitorAllRows).filter(row => String(row.fetch_date || "") === asinMonitorSelectedDate)
       : [];
@@ -1979,10 +2021,15 @@
     return payload;
   }
   async function refreshAsinMonitorResults() {
-    const resp = await fetch(`${API_BASE}/api/asin-monitor/results?limit=1000`);
-    const data = await parseApiResponse(resp);
-    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
-    renderAsinMonitorResults(data.results || []);
+    setAsinMonitorResultsLoading(true);
+    try {
+      const resp = await fetch(`${API_BASE}/api/asin-monitor/results?limit=1000`);
+      const data = await parseApiResponse(resp);
+      if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+      renderAsinMonitorResults(data.results || []);
+    } finally {
+      setAsinMonitorResultsLoading(false);
+    }
   }
   function openAsinMonitorModal() { asinMonitorModal.classList.add("show"); }
   function closeAsinMonitorModal() { asinMonitorModal.classList.remove("show"); }
@@ -3120,6 +3167,7 @@
   // 页面加载时优先恢复后端共享数据（局域网共用）
   (async () => {
     try {
+      setAsinMonitorResultsLoading(true);
       await loadFeishuConfig();
       await loadAsinMonitorConfig();
       await refreshAsinMonitorResults();
@@ -3140,6 +3188,9 @@
         }
       }
     } catch (_) {}
+    finally {
+      setAsinMonitorResultsLoading(false);
+    }
   })();
 
   try {
