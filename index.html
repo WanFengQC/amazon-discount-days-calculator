@@ -536,6 +536,38 @@
       line-height: 1.55;
       padding-top: 2px;
     }
+    .trend-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .trend-filter-btn {
+      min-width: 68px;
+      min-height: 36px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid #cfe0f6;
+      background: #f7fbff;
+      color: #4f7194;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      box-shadow: 0 4px 12px rgba(47, 99, 218, 0.06);
+    }
+    .trend-filter-btn:hover {
+      border-color: #8fb7eb;
+      color: #245996;
+      background: #edf5ff;
+    }
+    .trend-filter-btn.active {
+      border-color: #2f6fda;
+      background: linear-gradient(135deg, #2f6fda, #5391f0);
+      color: #fff;
+      box-shadow: 0 8px 20px rgba(47, 99, 218, 0.22);
+    }
     .trend-chart-wrap {
       padding: 10px 18px 18px;
       background: #fff;
@@ -553,6 +585,18 @@
       width: 100%;
       height: 520px;
       border-top: 1px solid #e2ebfb;
+    }
+    @media (max-width: 720px) {
+      .trend-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .trend-actions {
+        justify-content: flex-start;
+      }
+      .trend-filter-btn {
+        min-width: 0;
+      }
     }
     .monitor-pill {
       display: inline-flex;
@@ -1192,6 +1236,11 @@
     </div>
     <div class="trend-toolbar">
       <div id="asinMonitorTrendSubtitle" class="trend-summary">-</div>
+      <div class="trend-actions">
+        <button id="asinTrendRange3dBtn" type="button" class="trend-filter-btn">3天</button>
+        <button id="asinTrendRange7dBtn" type="button" class="trend-filter-btn">1周</button>
+        <button id="asinTrendRange30dBtn" type="button" class="trend-filter-btn">1个月</button>
+      </div>
     </div>
     <div class="trend-chart-wrap">
       <div id="asinMonitorTrendChart" class="trend-empty">暂无可用价格趋势数据。</div>
@@ -1258,6 +1307,9 @@
   const asinMonitorTrendTitle = document.getElementById("asinMonitorTrendTitle");
   const asinMonitorTrendSubtitle = document.getElementById("asinMonitorTrendSubtitle");
   const asinMonitorTrendChart = document.getElementById("asinMonitorTrendChart");
+  const asinTrendRange3dBtn = document.getElementById("asinTrendRange3dBtn");
+  const asinTrendRange7dBtn = document.getElementById("asinTrendRange7dBtn");
+  const asinTrendRange30dBtn = document.getElementById("asinTrendRange30dBtn");
   let asinTrendChart = null;
   const asinMonitorSummary = document.getElementById("asinMonitorSummary");
   const asinMonitorInput = document.getElementById("asinMonitorInput");
@@ -1316,6 +1368,8 @@
     asin: "",
     fieldKey: "discount_price",
     showAll: false,
+    rangeDays: 30,
+    legendSelected: {},
   };
   function todayIso() {
     const t = new Date();
@@ -1968,6 +2022,16 @@
     }
     return asinTrendChart;
   }
+  function renderAsinTrendRangeButtons() {
+    const entries = [
+      [asinTrendRange3dBtn, 3],
+      [asinTrendRange7dBtn, 7],
+      [asinTrendRange30dBtn, 30],
+    ];
+    entries.forEach(([btn, days]) => {
+      btn.classList.toggle("active", asinMonitorTrendState.rangeDays === days);
+    });
+  }
   function disposeAsinTrendChart() {
     if (asinTrendChart) {
       asinTrendChart.dispose();
@@ -1999,6 +2063,40 @@
     { line: "#8e44ad", area: "rgba(142, 68, 173, 0.10)", dot: "#8e44ad" },
     { line: "#e74c3c", area: "rgba(231, 76, 60, 0.10)", dot: "#e74c3c" },
   ];
+  function getTrendZoomWindow(labels) {
+    const count = labels.length;
+    if (!count) {
+      return { start: 0, end: 100 };
+    }
+    const rangeDays = Number(asinMonitorTrendState.rangeDays) || 30;
+    const visibleCount = Math.max(1, Math.min(rangeDays, count));
+    const rawStart = count <= visibleCount ? 0 : ((count - visibleCount) / count) * 100;
+    const start = Math.max(0, Math.min(99.5, Number(rawStart.toFixed(2))));
+    return { start, end: 100 };
+  }
+  function applyAsinTrendRangeZoom() {
+    const chart = ensureAsinTrendChart();
+    if (!chart) return;
+    const option = chart.getOption ? chart.getOption() : null;
+    const labels =
+      option && option.xAxis && option.xAxis[0] && Array.isArray(option.xAxis[0].data)
+        ? option.xAxis[0].data
+        : [];
+    if (!labels.length) return;
+    const zoomWindow = getTrendZoomWindow(labels);
+    chart.dispatchAction({
+      type: "dataZoom",
+      dataZoomIndex: 0,
+      start: zoomWindow.start,
+      end: zoomWindow.end,
+    });
+    chart.dispatchAction({
+      type: "dataZoom",
+      dataZoomIndex: 1,
+      start: zoomWindow.start,
+      end: zoomWindow.end,
+    });
+  }
   function renderAsinTrendChart(allSeries) {
     const hasData = allSeries.some((s) => s.points.length);
     if (!hasData) {
@@ -2014,6 +2112,7 @@
     const dateSet = new Set();
     for (const s of allSeries) for (const p of s.points) dateSet.add(p.date);
     const labels = Array.from(dateSet).sort();
+    const zoomWindow = getTrendZoomWindow(labels);
     const seriesOpts = allSeries.map((s, i) => {
       const color = trendSeriesColors[i % trendSeriesColors.length];
       const dataMap = new Map(s.points.map((p) => [p.date, p.value]));
@@ -2029,9 +2128,27 @@
         connectNulls: false,
       };
     });
-    chart.setOption(
-      {
-        grid: { left: 50, right: 30, top: 52, bottom: 42, containLabel: true },
+    chart.off("legendselectchanged");
+    chart.on("legendselectchanged", (event) => {
+      asinMonitorTrendState.legendSelected = { ...(event?.selected || {}) };
+    });
+    const option = {
+        color: seriesOpts.map((item) => item.lineStyle.color),
+        animationDuration: 280,
+        grid: { left: 54, right: 34, top: 106, bottom: 110, containLabel: true },
+        legend: {
+          top: 18,
+          left: "center",
+          itemWidth: 18,
+          itemHeight: 10,
+          icon: "roundRect",
+          textStyle: {
+            color: "#496b8d",
+            fontSize: 13,
+            fontWeight: 600,
+          },
+          selected: asinMonitorTrendState.legendSelected,
+        },
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "line", lineStyle: { color: "#c8d7ed", width: 1, type: "dashed" } },
@@ -2048,19 +2165,76 @@
           type: "category",
           data: labels,
           boundaryGap: false,
+          axisLine: { lineStyle: { color: "#afc4df" } },
+          axisTick: { show: false },
           axisLabel: { rotate: 35 },
         },
         yAxis: {
           type: "value",
           name: "价格",
+          splitLine: { lineStyle: { color: "#e2ebfb" } },
+          axisLine: { show: false },
+          axisTick: { show: false },
           axisLabel: {
             formatter: (value) => formatTrendPrice(Number(value)),
           },
         },
+        dataZoom: [
+          {
+            type: "inside",
+            xAxisIndex: 0,
+            filterMode: "none",
+            start: zoomWindow.start,
+            end: zoomWindow.end,
+          },
+          {
+            type: "slider",
+            xAxisIndex: 0,
+            filterMode: "none",
+            start: zoomWindow.start,
+            end: zoomWindow.end,
+            height: 36,
+            bottom: 24,
+            borderColor: "#d7e4f6",
+            backgroundColor: "#f5f9ff",
+            fillerColor: "rgba(82, 133, 227, 0.18)",
+            dataBackground: {
+              lineStyle: { color: "#9db9e8" },
+              areaStyle: { color: "rgba(157, 185, 232, 0.18)" },
+            },
+            selectedDataBackground: {
+              lineStyle: { color: "#4f85df" },
+              areaStyle: { color: "rgba(79, 133, 223, 0.24)" },
+            },
+            moveHandleStyle: {
+              color: "#ffffff",
+              borderColor: "#82a9e8",
+            },
+            emphasis: {
+              moveHandleStyle: {
+                color: "#ffffff",
+                borderColor: "#5a87d8",
+              },
+            },
+          },
+        ],
         series: seriesOpts,
-      },
-      { notMerge: true }
-    );
+      };
+    try {
+      chart.clear();
+      chart.setOption(option, { notMerge: true });
+      chart.resize();
+    } catch (err) {
+      console.warn("trend chart render fallback", err);
+      const fallback = {
+        ...option,
+        grid: { left: 54, right: 34, top: 86, bottom: 62, containLabel: true },
+      };
+      delete fallback.dataZoom;
+      chart.clear();
+      chart.setOption(fallback, { notMerge: true });
+      chart.resize();
+    }
   }
   function renderAsinMonitorTrend() {
     const asin = asinMonitorTrendState.asin;
@@ -2098,6 +2272,9 @@
     asinMonitorTrendState.asin = String(asin || "").trim().toUpperCase();
     asinMonitorTrendState.fieldKey = fieldKey;
     asinMonitorTrendState.showAll = true;
+    asinMonitorTrendState.rangeDays = 30;
+    asinMonitorTrendState.legendSelected = {};
+    renderAsinTrendRangeButtons();
     asinMonitorTrendModal.classList.add("show");
     renderAsinMonitorTrend();
     requestAnimationFrame(() => resizeAsinTrendChart());
@@ -2806,6 +2983,21 @@
     if (e.target === asinMonitorLogModal) closeAsinMonitorLog();
   });
   closeAsinMonitorTrendModalBtn.addEventListener("click", closeAsinMonitorTrend);
+  asinTrendRange3dBtn.addEventListener("click", () => {
+    asinMonitorTrendState.rangeDays = 3;
+    renderAsinTrendRangeButtons();
+    applyAsinTrendRangeZoom();
+  });
+  asinTrendRange7dBtn.addEventListener("click", () => {
+    asinMonitorTrendState.rangeDays = 7;
+    renderAsinTrendRangeButtons();
+    applyAsinTrendRangeZoom();
+  });
+  asinTrendRange30dBtn.addEventListener("click", () => {
+    asinMonitorTrendState.rangeDays = 30;
+    renderAsinTrendRangeButtons();
+    applyAsinTrendRangeZoom();
+  });
   asinMonitorTrendModal.addEventListener("click", (e) => {
     if (e.target === asinMonitorTrendModal) closeAsinMonitorTrend();
   });
@@ -2866,30 +3058,30 @@
   runAsinMonitorBtn.addEventListener("click", async () => {
     try {
       await saveAsinMonitorConfig();
-      const asins = parseAsinMonitorInput();
-      const total = asins.length || 1;
       showProgress("正在连接 Amazon，准备抓取...");
-      setAsinMonitorStatus("正在抓取今天的数据，这一步可能需要几十秒...");
+      setAsinMonitorStatus("正在抓取今天的数据，这一步可能需要几分钟...");
       runAsinMonitorBtn.disabled = true;
-      // 模拟阶段性进度
-      let progressPct = 5;
-      const progressSteps = [
-        { pct: 10, text: "正在加载页面..." },
-        { pct: 30, text: "正在解析商品数据..." },
-        { pct: 55, text: "正在提取价格信息..." },
-        { pct: 75, text: "正在整理抓取结果..." },
-        { pct: 90, text: "即将完成..." },
-      ];
-      let stepIdx = 0;
-      const timer = setInterval(() => {
-        if (stepIdx < progressSteps.length) {
-          const step = progressSteps[stepIdx];
-          setProgressPercent(step.pct, step.text);
-          stepIdx++;
+      // 轮询后端真实进度
+      let pollDone = false;
+      const pollProgress = async () => {
+        while (!pollDone) {
+          try {
+            const resp = await fetch(`${API_BASE}/api/asin-monitor/progress`);
+            if (resp.ok) {
+              const p = await resp.json();
+              if (p.running && p.total > 0) {
+                const pct = Math.round((p.completed / p.total) * 100);
+                setProgressPercent(pct, p.status || `已完成 ${p.completed}/${p.total}`);
+              }
+            }
+          } catch (_) {}
+          await new Promise((r) => setTimeout(r, 1500));
         }
-      }, 3000);
+      };
+      const pollPromise = pollProgress();
       const resp = await fetch(`${API_BASE}/api/asin-monitor/run-now`, { method: "POST" });
-      clearInterval(timer);
+      pollDone = true;
+      await pollPromise;
       const data = await parseApiResponse(resp);
       if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
       setProgressPercent(100, "抓取完成！");
@@ -2961,6 +3153,7 @@
   renderHistoryPanel();
   updateModeVisibility();
   renderMarkerModeButtons();
+  renderAsinTrendRangeButtons();
   updateMarkerFloatPosition();
   window.addEventListener("resize", updateMarkerFloatPosition);
   window.addEventListener("resize", resizeAsinTrendChart);

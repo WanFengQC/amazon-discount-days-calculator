@@ -123,6 +123,57 @@ def _clean_discount_strength(value: str | None) -> str | None:
     return normalized if normalized.startswith("-") else f"-{normalized}"
 
 
+def _has_public_discount_signal(
+    discount_type: str | None,
+    discount_strength: str | None,
+    discount_price: str | None,
+    list_price: str | None,
+    typical_price: str | None,
+    regular_price: str | None,
+) -> bool:
+    if str(discount_type or "").strip():
+        return True
+    if str(discount_strength or "").strip():
+        return True
+    sale = _price_to_number(discount_price)
+    if not sale:
+        return False
+    for candidate in (list_price, typical_price, regular_price):
+        reference = _price_to_number(candidate)
+        if reference and reference > sale:
+            return True
+    return False
+
+
+def _finalize_price_fields(
+    discount_type: str | None,
+    discount_strength: str | None,
+    discount_price: str | None,
+    list_price: str | None,
+    typical_price: str | None,
+    regular_price: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    sale = _price_to_number(discount_price)
+    regular = _price_to_number(regular_price)
+    if sale and regular and sale == regular:
+        discount_price = None
+        discount_strength = None
+        discount_type = None
+    if discount_price and not _has_public_discount_signal(
+        discount_type,
+        discount_strength,
+        discount_price,
+        list_price,
+        typical_price,
+        regular_price,
+    ):
+        if not regular_price:
+            regular_price = discount_price
+        discount_price = None
+        discount_strength = None
+    return discount_strength, discount_price, regular_price
+
+
 def _normalize_image_url(value: str | None) -> str | None:
     if not value:
         return None
@@ -331,6 +382,14 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
             regular_price,
         )
     discount_strength = _clean_discount_strength(discount_strength)
+    discount_strength, discount_price, regular_price = _finalize_price_fields(
+        discount_type,
+        discount_strength,
+        discount_price,
+        list_price,
+        typical_price,
+        regular_price,
+    )
 
     color = _extract_selected_variant_from_twister(html) or _first_match(
         html,

@@ -220,6 +220,13 @@ _reminder_lock = threading.Lock()
 _asin_monitor_lock = threading.Lock()
 _db_lock = threading.Lock()
 _db_initialized = False
+_asin_monitor_progress: dict = {
+    "running": False,
+    "total": 0,
+    "completed": 0,
+    "current_asin": "",
+    "status": "idle",
+}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -749,6 +756,57 @@ def _clean_discount_strength(value: str | None) -> str | None:
     return normalized if normalized.startswith("-") else f"-{normalized}"
 
 
+def _has_public_discount_signal(
+    discount_type: str | None,
+    discount_strength: str | None,
+    discount_price: str | None,
+    list_price: str | None,
+    typical_price: str | None,
+    regular_price: str | None,
+) -> bool:
+    if str(discount_type or "").strip():
+        return True
+    if str(discount_strength or "").strip():
+        return True
+    sale = _price_to_number(discount_price)
+    if not sale:
+        return False
+    for candidate in (list_price, typical_price, regular_price):
+        reference = _price_to_number(candidate)
+        if reference and reference > sale:
+            return True
+    return False
+
+
+def _finalize_price_fields(
+    discount_type: str | None,
+    discount_strength: str | None,
+    discount_price: str | None,
+    list_price: str | None,
+    typical_price: str | None,
+    regular_price: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    sale = _price_to_number(discount_price)
+    regular = _price_to_number(regular_price)
+    if sale and regular and sale == regular:
+        discount_price = None
+        discount_strength = None
+        discount_type = None
+    if discount_price and not _has_public_discount_signal(
+        discount_type,
+        discount_strength,
+        discount_price,
+        list_price,
+        typical_price,
+        regular_price,
+    ):
+        if not regular_price:
+            regular_price = discount_price
+        discount_price = None
+        discount_strength = None
+    return discount_strength, discount_price, regular_price
+
+
 def _resolve_asin_monitor_image_url(row: dict) -> str:
     image_url = str(row.get("image_url", "") or "").strip()
     if image_url:
@@ -813,193 +871,17 @@ def _fetch_amazon_page(url: str, extra_headers: dict[str, str] | None = None) ->
 
 
 def _parse_amazon_deal_fields(page_html: str) -> dict:
-    compact_html = re.sub(r"\s+", " ", page_html)
-    page_text = re.sub(r"<[^>]+>", " ", page_html)
-    page_text = html.unescape(re.sub(r"\s+", " ", page_text)).strip()
-    scope = _extract_first_group(
-        compact_html,
-        [
-            r'(<div id="dealBadge_feature_div".*?<div id="promoPriceBlockMessage_feature_div".*?</div>\s*</div>)',
-            r'(<div id="corePrice_desktop".*?<div id="amazonGlobal_feature_div".*?</div>)',
-            r'(<div id="ppd".*?<div id="centerCol".*?</div>)',
-        ],
-    ) or compact_html
-
-    discount_type = _extract_first_group(
-        scope,
-        [
-            r'"dealBadgeSupportingText":"([^"]+)"',
-            r'delightPricingBadge[^>]*>.*?>\s*([^<]*deal)\s*<',
-            r'a-badge-label-inner[^>]*>\s*([^<]*deal)\s*<',
-            r'>\s*((?:Limited|Prime Exclusive|Prime Big Deal|Best|Lightning)[^<]{0,40}?deal)\s*<',
-        ],
-    )
-
-    price_scope = _extract_first_group(
-        compact_html,
-        [
-            r'(<div id="corePriceDisplay_desktop_feature_div".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
-            r'(<div id="apex_desktop".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
-            r'(<div id="desktop_buybox".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
-            r'(<div id="corePrice_feature_div".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
-            r'(<div id="corePriceDisplay_desktop_feature_div".*?<div id="amazonGlobal_feature_div".*?</div>)',
-            r'(<div id="apex_desktop".*?<div id="amazonGlobal_feature_div".*?</div>)',
-        ],
-    ) or scope
-
-    discount_strength = _extract_first_group(
-        price_scope,
-        [
-            r'"percentageDisplayString":"(-?\d+%)"',
-            r'"savingsPercentage":"(-?\d+%)"',
-            r'reinventPriceSavingsPercentageMargin[^>]*>\s*(?:<span[^>]*>)?\s*(-\d+%)\s*<',
-            r'>\s*(-\d+%)\s*<',
-        ],
-    )
-    discount_strength = _clean_discount_strength(discount_strength)
-
-    discount_price = _normalize_price(
-        _extract_first_group(
-            price_scope,
-            [
-                r'apex-pricetopay-accessibility-label[^>]*>\s*\$?([\d,]+\.\d{2})\s+with\s+\d+\s+percent\s+savings',
-                r'customerVisiblePrice\]\[displayString\]"\s+value="\$?([\d,]+\.\d{2})"',
-                r'"priceToPay"[^{}]{0,400}?"moneyValueOrRange":"([\d.,]+)"',
-                r'"priceToPay"[^{}]{0,400}?"displayString":"[^$]*\$?([\d,]+\.\d{2})"',
-                r'Limited time deal.*?\$?([\d,]+\.\d{2})',
-            ],
-        )
-    )
-
-    list_price = _normalize_price(
-        _extract_first_group(
-            price_scope,
-            [
-                r'List Price:?\s*</span>\s*<span[^>]*>\s*\$?\s*([\d,]+\.\d{2})',
-                r'List Price:?\s*\$?\s*([\d,]+\.\d{2})',
-                r'"label"\s*:\s*"List Price:?"\s*,.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
-                r'"listPrice"[^{}]{0,300}?"displayString":"[^$]*\$?([\d,]+\.\d{2})"',
-            ],
-        )
-    )
-
-    typical_price = _normalize_price(
-        _extract_first_group(
-            price_scope,
-            [
-                r'Was Price:?\s*</span>\s*<span[^>]*>\s*\$?\s*([\d,]+\.\d{2})',
-                r'Was Price:?\s*\$?\s*([\d,]+\.\d{2})',
-                r'Typical price:?\s*</span>\s*<span[^>]*>\s*\$?\s*([\d,]+\.\d{2})',
-                r'Typical price:?\s*\$?\s*([\d,]+\.\d{2})',
-                r'"label"\s*:\s*"Typical price:?"\s*,.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
-                r'"label"\s*:\s*"Was Price:?"\s*,.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
-                r'"basisPriceToCompare"[^{}]{0,200}?"moneyValueOrRange":"([\d.,]+)"',
-                r'"basisPrice"\s*:\s*\{.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
-            ],
-        )
-    )
-
-    regular_price = _normalize_price(
-        _extract_first_group(
-            compact_html,
-            [
-                r'Regular Price:?\s*</span>\s*<span[^>]*>\s*\$?\s*([\d,]+\.\d{2})',
-                r'Regular Price:?\s*\$?\s*([\d,]+\.\d{2})',
-                r'"label"\s*:\s*"Regular Price:?"\s*,.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
-                r'"regularPrice"[^{}]{0,300}?"displayString":"[^$]*\$?([\d,]+\.\d{2})"',
-            ],
-        )
-    )
-
-    prime_member_price = _normalize_price(
-        _extract_first_group(
-            compact_html,
-            [
-                r'Prime Member Price:?\s*</span>\s*<span[^>]*>\s*\$?\s*([\d,]+\.\d{2})',
-                r'Prime Member Price:?\s*\$?\s*([\d,]+\.\d{2})',
-                r'"label"\s*:\s*"Prime Member Price:?"\s*,.*?"displayString"\s*:\s*"[^$]*\$?([\d,]+\.\d{2})"',
-                r'"primeMemberPrice"[^{}]{0,300}?"displayString":"[^$]*\$?([\d,]+\.\d{2})"',
-            ],
-        )
-    )
-
-    if not discount_type:
-        discount_type = _extract_first_group(
-            page_text,
-            [
-                r"\b((?:Limited|Prime Exclusive|Prime Big Deal|Best|Lightning)[ ]+[A-Za-z ]*deal)\b",
-            ],
-            flags=re.IGNORECASE,
-        )
-
-    if not discount_strength:
-        discount_strength = _extract_first_group(
-            page_text,
-            [
-                r"\b(-\d+%)\b",
-            ],
-            flags=re.IGNORECASE,
-        )
-    discount_strength = _clean_discount_strength(discount_strength)
-
-    if not list_price:
-        list_price = _normalize_price(
-            _extract_first_group(
-                page_text,
-                [
-                    r"List Price:?\s*(\$?\d+(?:\.\d{2})?)",
-                ],
-                flags=re.IGNORECASE,
-            )
-        )
-
-    if not typical_price:
-        typical_price = _normalize_price(
-            _extract_first_group(
-                page_text,
-                [
-                    r"Typical price:?\s*(\$?\d+(?:\.\d{2})?)",
-                    r"Was Price:?\s*(\$?\d+(?:\.\d{2})?)",
-                ],
-                flags=re.IGNORECASE,
-            )
-        )
-
-    if not regular_price:
-        regular_price = _normalize_price(
-            _extract_first_group(
-                page_text,
-                [r"Regular Price:?\s*(\$?\d+(?:\.\d{2})?)"],
-                flags=re.IGNORECASE,
-            )
-        )
-
-    if not prime_member_price:
-        prime_member_price = _normalize_price(
-            _extract_first_group(
-                page_text,
-                [r"Prime Member Price:?\s*(\$?\d+(?:\.\d{2})?)"],
-                flags=re.IGNORECASE,
-            )
-        )
-
-    if not discount_strength:
-        discount_strength = _infer_discount_strength(
-            discount_price,
-            list_price,
-            typical_price,
-            regular_price,
-        )
-    discount_strength = _clean_discount_strength(discount_strength)
-
+    page_text = html.unescape(re.sub(r"<[^>]+>", " ", page_html))
+    page_text = re.sub(r"\s+", " ", page_text).strip()
+    extracted = _extract_from_html(page_html, page_text)
     return {
-        "discount_type": discount_type,
-        "discount_strength": discount_strength,
-        "discount_price": discount_price,
-        "list_price": list_price,
-        "typical_price": typical_price,
-        "regular_price": regular_price,
-        "prime_member_price": prime_member_price,
+        "discount_type": extracted.get("discount_type"),
+        "discount_strength": extracted.get("discount_strength"),
+        "discount_price": extracted.get("discount_price"),
+        "list_price": extracted.get("list_price"),
+        "typical_price": extracted.get("typical_price"),
+        "regular_price": extracted.get("regular_price"),
+        "prime_member_price": extracted.get("prime_member_price"),
     }
 
 
@@ -1049,7 +931,15 @@ def _run_asin_monitor_once(config: dict) -> list[dict]:
         try:
             _apply_amazon_us_preferences(context)
             page = context.pages[0] if context.pages else context.new_page()
-            for asin in asins:
+            total = len(asins)
+            for idx, asin in enumerate(asins):
+                _asin_monitor_progress.update({
+                    "running": True,
+                    "total": total,
+                    "completed": idx,
+                    "current_asin": asin,
+                    "status": f"正在抓取 {asin} ({idx + 1}/{total})",
+                })
                 url = _build_url(asin, None)
                 attempts = 0
                 row: dict | None = None
@@ -1175,8 +1065,22 @@ def _run_asin_monitor_once(config: dict) -> list[dict]:
                         "reference_price": None,
                     }
                 rows.append(row)
+                _asin_monitor_progress.update({
+                    "running": True,
+                    "total": total,
+                    "completed": idx + 1,
+                    "current_asin": asin,
+                    "status": f"已完成 {asin} ({idx + 1}/{total})",
+                })
         finally:
             context.close()
+    _asin_monitor_progress.update({
+        "running": False,
+        "total": total,
+        "completed": total,
+        "current_asin": "",
+        "status": "done",
+    })
     return rows
 
 
@@ -2016,6 +1920,11 @@ async def run_asin_monitor_now() -> AsinMonitorRunResponse:
         count=len(rows),
         results=[AsinMonitorResult(**row) for row in rows],
     )
+
+
+@app.get("/api/asin-monitor/progress")
+async def get_asin_monitor_progress() -> dict:
+    return dict(_asin_monitor_progress)
 
 
 @app.get("/api/shared-state", response_model=SharedStateResponse)
