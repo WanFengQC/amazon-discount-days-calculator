@@ -468,6 +468,20 @@
       font-size: 13px;
       color: #5f7f9d;
     }
+    .monitor-filters {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .monitor-filter-label {
+      font-size: 13px;
+      color: #5f7f9d;
+      font-weight: 600;
+    }
+    .monitor-filter-select {
+      min-width: 220px;
+    }
     .monitor-asin-link {
       color: #1f5ea8;
       font-weight: 600;
@@ -513,8 +527,7 @@
       height: auto;
       min-height: 0;
       cursor: pointer;
-      text-decoration: underline;
-      text-underline-offset: 2px;
+      text-decoration: none;
     }
     .monitor-price-btn:hover {
       color: #174b87;
@@ -1141,6 +1154,12 @@
       </div>
       <div class="monitor-toolbar">
         <div id="asinMonitorDateLabel" class="monitor-date-label">当前仅显示当天数据。</div>
+        <div class="monitor-filters">
+          <span class="monitor-filter-label">PSKU筛选</span>
+          <select id="asinMonitorPskuFilter" class="monitor-filter-select">
+            <option value="">全部PSKU</option>
+          </select>
+        </div>
       </div>
       <div id="monitorTableWrap" class="monitor-table-wrap">
         <div id="monitorTableScroll" class="monitor-table-scroll">
@@ -1149,12 +1168,12 @@
               <tr>
                 <th>主图</th>
                 <th>ASIN</th>
-                <th>variant</th>
+                <th>SKU</th>
                 <th>discount_type</th>
                 <th>discount_strength</th>
-                <th>discount_price</th>
+                <th>Discount Price</th>
                 <th>List Price</th>
-                <th>Typical price</th>
+                <th>Typical Price</th>
                 <th>Regular Price</th>
                 <th>Prime Member Price</th>
               </tr>
@@ -1345,6 +1364,7 @@
   const asinMonitorNextDateBtn = document.getElementById("asinMonitorNextDateBtn");
   const asinMonitorDateSelect = document.getElementById("asinMonitorDateSelect");
   const asinMonitorDateLabel = document.getElementById("asinMonitorDateLabel");
+  const asinMonitorPskuFilter = document.getElementById("asinMonitorPskuFilter");
   const asinMonitorStatus = document.getElementById("asinMonitorStatus");
   const asinMonitorProgressWrap = document.getElementById("asinMonitorProgressWrap");
   const asinMonitorProgressBar = document.getElementById("asinMonitorProgressBar");
@@ -1375,18 +1395,23 @@
   let selectedOpenIdSet = new Set();
   let asinMonitorAllRows = [];
   let asinMonitorSelectedDate = "";
+  let asinMonitorSelectedPsku = "";
   let asinMonitorConfiguredAsins = [];
   let asinMonitorResultsLoading = false;
   const asinMonitorPriceFields = [
-    { key: "discount_price", label: "discount_price" },
+    { key: "discount_price", label: "Discount Price" },
     { key: "list_price", label: "List Price" },
-    { key: "typical_price", label: "Typical price" },
+    { key: "typical_price", label: "Typical Price" },
     { key: "regular_price", label: "Regular Price" },
     { key: "prime_member_price", label: "Prime Member Price" },
   ];
+  const asinMonitorTrendPriceFields = [
+    ...asinMonitorPriceFields,
+    { key: "deal_price", label: "Deal Price" },
+  ];
   const asinMonitorTrendState = {
     asin: "",
-    fieldKey: "discount_price",
+    fieldKey: "deal_price",
     showAll: false,
     rangeDays: 30,
     legendSelected: {},
@@ -1791,11 +1816,38 @@
       .map(x => x.trim().toUpperCase())
       .filter(Boolean);
   }
-  function getVisibleAsinMonitorRows(rows) {
+  function getConfiguredAsinMonitorRows(rows) {
     const sourceRows = Array.isArray(rows) ? rows : [];
     const allowed = new Set((asinMonitorConfiguredAsins || []).map(x => String(x || "").trim().toUpperCase()).filter(Boolean));
     if (!allowed.size) return [];
     return sourceRows.filter(row => allowed.has(String(row?.asin || "").trim().toUpperCase()));
+  }
+  function getVisibleAsinMonitorRows(rows) {
+    const configuredRows = getConfiguredAsinMonitorRows(rows);
+    if (!asinMonitorSelectedPsku) return configuredRows;
+    return configuredRows.filter(row => String(row?.psku || "").trim() === asinMonitorSelectedPsku);
+  }
+  function updateAsinMonitorPskuFilter(rows) {
+    const configuredRows = getConfiguredAsinMonitorRows(rows);
+    const pskuValues = Array.from(
+      new Set(configuredRows.map(row => String(row?.psku || "").trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+    if (asinMonitorSelectedPsku && !pskuValues.includes(asinMonitorSelectedPsku)) {
+      asinMonitorSelectedPsku = "";
+    }
+    asinMonitorPskuFilter.innerHTML = "";
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "全部PSKU";
+    asinMonitorPskuFilter.appendChild(allOption);
+    for (const psku of pskuValues) {
+      const option = document.createElement("option");
+      option.value = psku;
+      option.textContent = psku;
+      asinMonitorPskuFilter.appendChild(option);
+    }
+    asinMonitorPskuFilter.value = asinMonitorSelectedPsku;
+    asinMonitorPskuFilter.disabled = !pskuValues.length;
   }
   function getAsinMonitorAvailableDates(rows) {
     return Array.from(new Set(getVisibleAsinMonitorRows(rows).map(row => String(row.fetch_date || "")).filter(Boolean))).sort();
@@ -1826,7 +1878,8 @@
     const idx = dates.indexOf(asinMonitorSelectedDate);
     asinMonitorPrevDateBtn.disabled = idx <= 0;
     asinMonitorNextDateBtn.disabled = idx < 0 || idx >= dates.length - 1;
-    asinMonitorDateLabel.textContent = `当前显示 ${asinMonitorSelectedDate} 的数据，共 ${visibleRows.filter(row => String(row.fetch_date || "") === asinMonitorSelectedDate).length} 条。`;
+    const pskuText = asinMonitorSelectedPsku ? `，PSKU：${asinMonitorSelectedPsku}` : "";
+    asinMonitorDateLabel.textContent = `当前显示 ${asinMonitorSelectedDate}${pskuText} 的数据，共 ${visibleRows.filter(row => String(row.fetch_date || "") === asinMonitorSelectedDate).length} 条。`;
   }
   function setAsinMonitorResultsLoading(loading) {
     asinMonitorResultsLoading = !!loading;
@@ -1834,6 +1887,7 @@
   }
   function renderAsinMonitorResults(rows) {
     asinMonitorAllRows = Array.isArray(rows) ? rows.slice() : [];
+    updateAsinMonitorPskuFilter(asinMonitorAllRows);
     updateAsinMonitorDateControls(asinMonitorAllRows);
     asinMonitorResults.innerHTML = "";
     if (asinMonitorResultsLoading) {
@@ -1857,6 +1911,11 @@
     const visibleRows = asinMonitorSelectedDate
       ? getVisibleAsinMonitorRows(asinMonitorAllRows).filter(row => String(row.fetch_date || "") === asinMonitorSelectedDate)
       : [];
+    visibleRows.sort((a, b) =>
+      String(a?.psku || "").localeCompare(String(b?.psku || ""))
+      || String(a?.sku || "").localeCompare(String(b?.sku || ""))
+      || String(a?.asin || "").localeCompare(String(b?.asin || ""))
+    );
     if (!visibleRows.length) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
@@ -1907,9 +1966,9 @@
       asinLink.textContent = row.asin || "-";
       asinTd.appendChild(asinLink);
       tr.appendChild(asinTd);
-      const variantTd = document.createElement("td");
-      variantTd.textContent = row.color || "-";
-      tr.appendChild(variantTd);
+      const skuTd = document.createElement("td");
+      skuTd.textContent = row.sku || "-";
+      tr.appendChild(skuTd);
       const discountTypeTd = document.createElement("td");
       discountTypeTd.textContent = row.discount_type || "-";
       tr.appendChild(discountTypeTd);
@@ -2059,6 +2118,16 @@
     const match = text.match(/-?\d+(?:\.\d+)?/);
     return match ? Number(match[0]) : null;
   }
+  function hasDealPrice(row) {
+    return !!String(row?.discount_type || "").trim();
+  }
+  function getMonitorTrendRawValue(row, fieldKey) {
+    if (!row) return "-";
+    if (fieldKey === "deal_price") {
+      return hasDealPrice(row) ? (row.discount_price || "-") : "-";
+    }
+    return row[fieldKey] || "-";
+  }
   function formatTrendPrice(value) {
     return Number.isFinite(value) ? `$${value.toFixed(2)}` : "-";
   }
@@ -2092,7 +2161,7 @@
     const grouped = new Map();
     for (const row of asinMonitorAllRows) {
       if (String(row?.asin || "").trim().toUpperCase() !== String(asin || "").trim().toUpperCase()) continue;
-      const num = parseMonitorPrice(row?.[fieldKey]);
+      const num = parseMonitorPrice(getMonitorTrendRawValue(row, fieldKey));
       if (!Number.isFinite(num)) continue;
       const fetchDate = String(row?.fetch_date || "").trim();
       if (!fetchDate) continue;
@@ -2109,6 +2178,7 @@
     { line: "#27ae60", area: "rgba(39, 174, 96, 0.10)", dot: "#27ae60" },
     { line: "#8e44ad", area: "rgba(142, 68, 173, 0.10)", dot: "#8e44ad" },
     { line: "#e74c3c", area: "rgba(231, 76, 60, 0.10)", dot: "#e74c3c" },
+    { line: "#d946ef", area: "rgba(217, 70, 239, 0.10)", dot: "#d946ef" },
   ];
   function getTrendZoomWindow(labels) {
     const count = labels.length;
@@ -2163,14 +2233,17 @@
     const seriesOpts = allSeries.map((s, i) => {
       const color = trendSeriesColors[i % trendSeriesColors.length];
       const dataMap = new Map(s.points.map((p) => [p.date, p.value]));
+      const isDealPrice = s.key === "deal_price" || s.label === "Deal Price";
       return {
         name: s.label,
         type: "line",
         smooth: true,
         data: labels.map((d) => dataMap.has(d) ? dataMap.get(d) : null),
         symbol: "circle",
-        symbolSize: 6,
-        lineStyle: { width: 2.4, color: color.line },
+        symbolSize: isDealPrice ? 7 : 6,
+        z: isDealPrice ? 10 : 2,
+        zlevel: isDealPrice ? 1 : 0,
+        lineStyle: { width: isDealPrice ? 3 : 2.4, color: color.line },
         itemStyle: { color: color.dot },
         connectNulls: false,
       };
@@ -2289,7 +2362,8 @@
     asinMonitorTrendTitle.textContent = `${asin || "-"} · 价格趋势`;
     let allSeries = [];
     if (showAll) {
-      allSeries = asinMonitorPriceFields.map((f) => ({
+      allSeries = asinMonitorTrendPriceFields.map((f) => ({
+        key: f.key,
         label: f.label,
         points: getAsinTrendPoints(asin, f.key),
       }));
@@ -2302,9 +2376,9 @@
         asinMonitorTrendSubtitle.textContent = "当前暂无可用价格数据。";
       }
     } else {
-      const field = asinMonitorPriceFields.find((item) => item.key === asinMonitorTrendState.fieldKey) || asinMonitorPriceFields[0];
+      const field = asinMonitorTrendPriceFields.find((item) => item.key === asinMonitorTrendState.fieldKey) || asinMonitorTrendPriceFields[0];
       const points = getAsinTrendPoints(asin, field.key);
-      allSeries = [{ label: field.label, points }];
+      allSeries = [{ key: field.key, label: field.label, points }];
       if (points.length) {
         const first = points[0];
         const last = points[points.length - 1];
@@ -3050,6 +3124,10 @@
   });
   asinMonitorDateSelect.addEventListener("change", () => {
     asinMonitorSelectedDate = asinMonitorDateSelect.value || "";
+    renderAsinMonitorResults(asinMonitorAllRows);
+  });
+  asinMonitorPskuFilter.addEventListener("change", () => {
+    asinMonitorSelectedPsku = asinMonitorPskuFilter.value || "";
     renderAsinMonitorResults(asinMonitorAllRows);
   });
   asinMonitorPrevDateBtn.addEventListener("click", () => {

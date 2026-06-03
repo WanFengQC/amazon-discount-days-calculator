@@ -29,6 +29,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from openpyxl import load_workbook
 from playwright.sync_api import sync_playwright
 from pydantic import BaseModel, Field
 try:
@@ -177,6 +178,8 @@ class AsinMonitorResult(BaseModel):
     html_path: str = ""
     image_url: str = ""
     color: str = ""
+    sku: str = ""
+    psku: str = ""
     discount_type: str | None = None
     discount_strength: str | None = None
     discount_price: str | None = None
@@ -209,6 +212,8 @@ STATE_FILE = BASE_DIR / "shared_state.json"
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 SOURCE_FILE_PATH = DATA_DIR / "source_import.xlsx"
+ASIN_SKU_DB_FILE = DATA_DIR / "SKU数据库.xlsx"
+LEGACY_ASIN_SKU_DB_FILE = Path.home() / "Downloads" / "SKU数据库.xlsx"
 ASIN_MONITOR_HTML_DIR = DATA_DIR / "asin_monitor_html"
 ASIN_MONITOR_HTML_DIR.mkdir(parents=True, exist_ok=True)
 FEISHU_FILE = DATA_DIR / "feishu_config.json"
@@ -220,6 +225,12 @@ _reminder_lock = threading.Lock()
 _asin_monitor_lock = threading.Lock()
 _db_lock = threading.Lock()
 _db_initialized = False
+_asin_sku_lookup_lock = threading.Lock()
+_asin_sku_lookup_cache: dict[str, object] = {
+    "path": "",
+    "mtime_ns": -1,
+    "mapping": {},
+}
 _asin_monitor_progress: dict = {
     "running": False,
     "total": 0,
@@ -254,6 +265,83 @@ def _load_json_file(path: Path) -> dict:
 
 def _save_json_file(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _normalize_asin_key(value: object) -> str:
+    return str(value or "").strip().upper()
+
+
+def _clean_cell_text(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _resolve_asin_sku_db_file() -> Path | None:
+    for path in (ASIN_SKU_DB_FILE, BASE_DIR / "SKU数据库.xlsx", LEGACY_ASIN_SKU_DB_FILE):
+        if path.exists() and path.is_file():
+            return path
+    return None
+
+
+def _load_asin_sku_lookup() -> dict[str, dict[str, str]]:
+    source = _resolve_asin_sku_db_file()
+    if not source:
+        return {}
+    stat = source.stat()
+    cache_key = str(source.resolve())
+    with _asin_sku_lookup_lock:
+        cached_path = str(_asin_sku_lookup_cache.get("path", "") or "")
+        cached_mtime = int(_asin_sku_lookup_cache.get("mtime_ns", -1) or -1)
+        if cached_path == cache_key and cached_mtime == int(stat.st_mtime_ns):
+            mapping = _asin_sku_lookup_cache.get("mapping", {})
+            return mapping if isinstance(mapping, dict) else {}
+
+    workbook = load_workbook(source, read_only=True, data_only=True)
+    try:
+        if not workbook.sheetnames:
+            return {}
+        sheet = workbook[workbook.sheetnames[0]]
+        rows = sheet.iter_rows(values_only=True)
+        header_row = next(rows, None)
+        if not header_row:
+            return {}
+        headers = {_clean_cell_text(name): idx for idx, name in enumerate(header_row)}
+        asin_idx = headers.get("ASIN")
+        sku_idx = headers.get("MSKU")
+        psku_idx = headers.get("PSKU")
+        name_idx = headers.get("品名")
+        if asin_idx is None:
+            return {}
+        mapping: dict[str, dict[str, str]] = {}
+        for row in rows:
+            if row is None:
+                continue
+            asin = _normalize_asin_key(row[asin_idx] if asin_idx < len(row) else "")
+            if not asin:
+                continue
+            sku = _clean_cell_text(row[sku_idx] if sku_idx is not None and sku_idx < len(row) else "")
+            psku = _clean_cell_text(row[psku_idx] if psku_idx is not None and psku_idx < len(row) else "")
+            product_name = _clean_cell_text(row[name_idx] if name_idx is not None and name_idx < len(row) else "")
+            mapping[asin] = {
+                "sku": sku,
+                "psku": psku,
+                "product_name": product_name,
+            }
+    finally:
+        workbook.close()
+
+    with _asin_sku_lookup_lock:
+        _asin_sku_lookup_cache["path"] = cache_key
+        _asin_sku_lookup_cache["mtime_ns"] = int(stat.st_mtime_ns)
+        _asin_sku_lookup_cache["mapping"] = mapping
+    return mapping
+
+
+def _enrich_asin_monitor_row(row: dict) -> dict:
+    item = dict(row)
+    lookup = _load_asin_sku_lookup().get(_normalize_asin_key(item.get("asin")), {})
+    item["sku"] = str(lookup.get("sku", "") or "")
+    item["psku"] = str(lookup.get("psku", "") or "")
+    return item
 
 
 def _db_connect() -> sqlite3.Connection:
@@ -545,7 +633,7 @@ def _load_asin_monitor_results() -> list[dict]:
         item["html_path"] = str(item.get("html_path", "") or "")
         item["image_url"] = _resolve_asin_monitor_image_url(item)
         item["color"] = _resolve_asin_monitor_color(item)
-        out.append(item)
+        out.append(_enrich_asin_monitor_row(item))
     return out
 
 
@@ -625,7 +713,7 @@ def _load_asin_monitor_results_for_date(fetch_date: str) -> list[dict]:
         item["html_path"] = str(item.get("html_path", "") or "")
         item["image_url"] = _resolve_asin_monitor_image_url(item)
         item["color"] = _resolve_asin_monitor_color(item)
-        out.append(item)
+        out.append(_enrich_asin_monitor_row(item))
     return out
 
 
@@ -1121,7 +1209,7 @@ def _execute_asin_monitor_run(force: bool = False, trigger: str = "manual") -> l
             config["last_auto_run_date"] = today_key
             config["last_auto_run_at"] = config["last_run_at"]
         _save_asin_monitor_config(config)
-        return rows
+        return [_enrich_asin_monitor_row(row) for row in rows]
 
 
 def _asin_monitor_worker() -> None:
