@@ -79,3 +79,13 @@ docker compose up --build
 - `feishu disabled`：请将“启用提醒”切换为启用并保存（当前版本发送按钮会自动保存一次）
 - 局域网无法访问：确认后端绑定 `0.0.0.0` 且防火墙放行 8010
 - 成员无头像/昵称：通常是飞书应用权限范围限制，需补齐通讯录可读权限
+
+## 历史数据清洗
+
+如果历史 ASIN HTML 里混入了别的商品价格，可以用脚本按历史 HTML 重算并回写结果：
+
+```powershell
+python .\scripts\clean_asin_monitor_history.py
+```
+
+默认会扫描 `data/asin_monitor_html`，重写 `data/app_state.sqlite3` 和 `data/asin_monitor_results.json`，并在 `data/history_clean_backups` 下保留备份。

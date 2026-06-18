@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 import html
 import json
+import logging
 import re
 import sqlite3
+import subprocess
 import threading
 import time
 import urllib.request
@@ -25,13 +27,15 @@ from amazon_deal_extractor import (
     _read_page_state,
     build_browser_launch_kwargs,
 )
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Query
 from fastapi.responses import HTMLResponse
 from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from openpyxl import load_workbook
 from playwright.sync_api import sync_playwright
 from pydantic import BaseModel, Field
+from zoneinfo import ZoneInfo
 try:
     import chinese_calendar
 except Exception:
@@ -40,9 +44,11 @@ except Exception:
 
 class CalcRequest(BaseModel):
     history_dates: list[str] = Field(default_factory=list)
+    history_marker_dates: dict[str, str] = Field(default_factory=dict)
     future_days: int = Field(ge=1)
     selected_offsets: list[int] = Field(default_factory=list)
     marker_overrides: dict[str, str] = Field(default_factory=dict)
+    marker_mode: Literal["BD", "PD", "PC", "SP"] = "PD"
     mode: Literal["even", "centered_even", "centered", "head", "tail", "custom"] = "even"
     preferred_start: int | None = None
     preferred_end: int | None = None
@@ -56,7 +62,7 @@ class DayResult(BaseModel):
     recommended: bool
     available: bool
     violation: bool
-    marker: Literal["BD", "PD", "PC"]
+    marker: Literal["BD", "PD", "PC", "SP"]
     past90_count: int
     remaining_after_select: int
 
@@ -72,25 +78,29 @@ class CalcResponse(BaseModel):
 class SharedStateRequest(BaseModel):
     records: list[dict] = Field(default_factory=list)
     product_sim: list[dict] = Field(default_factory=list)
+    strategies: list[dict] = Field(default_factory=list)
     future_days: int = 90
     mode: str = "even"
     custom_start: int = 0
     custom_end: int = 14
     selected_key: str = ""
     file_name: str = ""
-    marker_mode: Literal["BD", "PD", "PC"] = "PD"
+    marker_mode: Literal["BD", "PD", "PC", "SP"] = "PD"
+    import_template_config: dict = Field(default_factory=dict)
 
 
 class SharedStateResponse(BaseModel):
     records: list[dict] = Field(default_factory=list)
     product_sim: list[dict] = Field(default_factory=list)
+    strategies: list[dict] = Field(default_factory=list)
     future_days: int = 90
     mode: str = "even"
     custom_start: int = 0
     custom_end: int = 14
     selected_key: str = ""
     file_name: str = ""
-    marker_mode: Literal["BD", "PD", "PC"] = "PD"
+    marker_mode: Literal["BD", "PD", "PC", "SP"] = "PD"
+    import_template_config: dict = Field(default_factory=dict)
 
 
 class FeishuConfigRequest(BaseModel):
@@ -110,7 +120,7 @@ class FeishuConfigResponse(BaseModel):
 class ReminderRange(BaseModel):
     start_date: str
     end_date: str
-    marker: Literal["BD", "PD", "PC"] = "PC"
+    marker: Literal["BD", "PD", "PC", "SP"] = "PC"
     asin: str = ""
     sku: str = ""
     label: str = ""
@@ -211,7 +221,6 @@ BASE_DIR = Path(__file__).resolve().parent
 STATE_FILE = BASE_DIR / "shared_state.json"
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-SOURCE_FILE_PATH = DATA_DIR / "source_import.xlsx"
 ASIN_SKU_DB_FILE = DATA_DIR / "SKU数据库.xlsx"
 LEGACY_ASIN_SKU_DB_FILE = Path.home() / "Downloads" / "SKU数据库.xlsx"
 ASIN_MONITOR_HTML_DIR = DATA_DIR / "asin_monitor_html"
@@ -221,6 +230,12 @@ REMINDER_LOG_FILE = DATA_DIR / "reminder_log.json"
 ASIN_MONITOR_CONFIG_FILE = DATA_DIR / "asin_monitor_config.json"
 ASIN_MONITOR_RESULTS_FILE = DATA_DIR / "asin_monitor_results.json"
 SQLITE_DB_FILE = DATA_DIR / "app_state.sqlite3"
+FIXED_EXPORT_TEMPLATE_FILE = BASE_DIR / "fixed_export_template.xlsx"
+try:
+    APP_TIMEZONE = ZoneInfo("Asia/Shanghai")
+except Exception:
+    APP_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Shanghai")
+logger = logging.getLogger(__name__)
 _reminder_lock = threading.Lock()
 _asin_monitor_lock = threading.Lock()
 _db_lock = threading.Lock()
@@ -246,12 +261,122 @@ async def home() -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-def _load_shared_state() -> dict:
-    return _db_load_json("shared_state")
+def _normalize_browser_id(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", text)
+    return safe[:120].strip("-._")
 
 
-def _save_shared_state(data: dict) -> None:
-    _db_save_json("shared_state", data)
+def _resolve_browser_id(header_value: str | None = None, query_value: str | None = None) -> str:
+    browser_id = _normalize_browser_id(header_value) or _normalize_browser_id(query_value)
+    if not browser_id:
+        raise HTTPException(status_code=400, detail="missing browser id")
+    return browser_id
+
+
+def _default_shared_state() -> dict:
+    return {
+        "records": [],
+        "product_sim": [],
+        "strategies": [],
+        "future_days": 90,
+        "mode": "even",
+        "custom_start": 0,
+        "custom_end": 14,
+        "selected_key": "",
+        "file_name": "",
+        "marker_mode": "PD",
+        "import_template_config": {},
+    }
+
+
+def _load_shared_state(browser_id: str) -> dict:
+    _ensure_sqlite_ready()
+    with _db_connect() as conn:
+        row = conn.execute(
+            "SELECT state_json FROM browser_shared_state WHERE browser_id = ?",
+            (browser_id,),
+        ).fetchone()
+    if not row:
+        return _default_shared_state()
+    try:
+        value = json.loads(str(row["state_json"]))
+    except Exception:
+        return _default_shared_state()
+    data = _default_shared_state()
+    if isinstance(value, dict):
+        data.update(value)
+    return data
+
+
+def _save_shared_state(browser_id: str, data: dict) -> None:
+    _ensure_sqlite_ready()
+    payload = _default_shared_state()
+    if isinstance(data, dict):
+        payload.update(data)
+    with _db_connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO browser_shared_state (browser_id, state_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(browser_id) DO UPDATE SET
+                state_json = excluded.state_json,
+                updated_at = excluded.updated_at
+            """,
+            (browser_id, json.dumps(payload, ensure_ascii=False), _utc_now_iso()),
+        )
+        conn.commit()
+
+
+def _save_browser_source_file(browser_id: str, file_name: str, content: bytes, content_type: str) -> None:
+    _ensure_sqlite_ready()
+    shared_state = _load_shared_state(browser_id)
+    with _db_connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO browser_shared_state (
+                browser_id, state_json, file_name, file_blob, file_content_type, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(browser_id) DO UPDATE SET
+                state_json = excluded.state_json,
+                file_name = excluded.file_name,
+                file_blob = excluded.file_blob,
+                file_content_type = excluded.file_content_type,
+                updated_at = excluded.updated_at
+            """,
+            (
+                browser_id,
+                json.dumps(shared_state, ensure_ascii=False),
+                file_name,
+                sqlite3.Binary(content),
+                content_type or "application/octet-stream",
+                _utc_now_iso(),
+            ),
+        )
+        conn.commit()
+
+
+def _load_browser_source_file(browser_id: str) -> dict | None:
+    _ensure_sqlite_ready()
+    with _db_connect() as conn:
+        row = conn.execute(
+            """
+            SELECT file_name, file_blob, file_content_type
+            FROM browser_shared_state
+            WHERE browser_id = ?
+            """,
+            (browser_id,),
+        ).fetchone()
+    if not row or row["file_blob"] is None:
+        return None
+    return {
+        "file_name": str(row["file_name"] or "source_import.xlsx"),
+        "file_blob": bytes(row["file_blob"]),
+        "file_content_type": str(row["file_content_type"] or "application/octet-stream"),
+    }
 
 
 def _load_json_file(path: Path) -> dict:
@@ -420,7 +545,7 @@ def _ensure_asin_monitor_result_columns(conn: sqlite3.Connection) -> None:
 
 def _save_asin_monitor_html(asin: str, fetch_date: str, fetched_at: str, html_text: str) -> str:
     asin_key = re.sub(r"[^A-Z0-9_-]+", "_", str(asin or "").strip().upper()) or "UNKNOWN"
-    date_key = re.sub(r"[^0-9-]+", "_", str(fetch_date or "").strip()) or date.today().isoformat()
+    date_key = re.sub(r"[^0-9-]+", "_", str(fetch_date or "").strip()) or _local_today().isoformat()
     time_key = re.sub(r"[^0-9T]+", "_", str(fetched_at or "").strip()) or _utc_now_iso().replace(":", "-")
     file_name = f"{asin_key}_{date_key}_{time_key}.html"
     target = ASIN_MONITOR_HTML_DIR / file_name
@@ -503,6 +628,14 @@ def _ensure_sqlite_ready() -> None:
                     value TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS browser_shared_state (
+                    browser_id TEXT PRIMARY KEY,
+                    state_json TEXT NOT NULL,
+                    file_name TEXT NOT NULL DEFAULT '',
+                    file_blob BLOB,
+                    file_content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+                    updated_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS asin_monitor_results (
                     asin TEXT NOT NULL,
                     fetch_date TEXT NOT NULL,
@@ -537,8 +670,16 @@ def _ensure_sqlite_ready() -> None:
         _db_initialized = True
 
 
+def _local_now() -> datetime:
+    return datetime.now(APP_TIMEZONE)
+
+
+def _local_today() -> date:
+    return _local_now().date()
+
+
 def _utc_now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return _local_now().isoformat(timespec="seconds")
 
 
 def _default_asin_monitor_config() -> dict:
@@ -717,7 +858,7 @@ def _load_asin_monitor_results_for_date(fetch_date: str) -> list[dict]:
     return out
 
 
-def _upsert_asin_monitor_results(new_rows: list[dict], keep_latest: int = 1000) -> list[dict]:
+def _upsert_asin_monitor_results(new_rows: list[dict], keep_latest: int | None = None) -> list[dict]:
     _ensure_sqlite_ready()
     with _db_connect() as conn:
         for row in new_rows:
@@ -753,20 +894,21 @@ def _upsert_asin_monitor_results(new_rows: list[dict], keep_latest: int = 1000) 
                     row.get("reference_price"),
                 ),
             )
-        stale = conn.execute(
-            """
-            SELECT asin, fetch_date
-            FROM asin_monitor_results
-            ORDER BY fetch_date DESC, asin ASC
-            LIMIT -1 OFFSET ?
-            """,
-            (max(0, keep_latest),),
-        ).fetchall()
-        for stale_row in stale:
-            conn.execute(
-                "DELETE FROM asin_monitor_results WHERE asin = ? AND fetch_date = ?",
-                (str(stale_row["asin"]), str(stale_row["fetch_date"])),
-            )
+        if keep_latest is not None:
+            stale = conn.execute(
+                """
+                SELECT asin, fetch_date
+                FROM asin_monitor_results
+                ORDER BY fetch_date DESC, asin ASC
+                LIMIT -1 OFFSET ?
+                """,
+                (max(0, keep_latest),),
+            ).fetchall()
+            for stale_row in stale:
+                conn.execute(
+                    "DELETE FROM asin_monitor_results WHERE asin = ? AND fetch_date = ?",
+                    (str(stale_row["asin"]), str(stale_row["fetch_date"])),
+                )
         conn.commit()
     return _load_asin_monitor_results()
 
@@ -899,44 +1041,14 @@ def _resolve_asin_monitor_image_url(row: dict) -> str:
     image_url = str(row.get("image_url", "") or "").strip()
     if image_url:
         return image_url
-    html_path = str(row.get("html_path", "") or "").strip()
-    if not html_path:
-        return ""
-    target = (BASE_DIR / html_path).resolve()
-    try:
-        target.relative_to(BASE_DIR.resolve())
-    except ValueError:
-        return ""
-    if not target.exists() or not target.is_file():
-        return ""
-    try:
-        html_text = target.read_text(encoding="utf-8", errors="replace")
-    except Exception:
-        return ""
-    parsed = _extract_from_html(html_text, "")
-    return str(parsed.get("image_url", "") or "").strip()
+    return ""
 
 
 def _resolve_asin_monitor_color(row: dict) -> str:
     color = str(row.get("color", "") or "").strip()
     if color:
         return color
-    html_path = str(row.get("html_path", "") or "").strip()
-    if not html_path:
-        return ""
-    target = (BASE_DIR / html_path).resolve()
-    try:
-        target.relative_to(BASE_DIR.resolve())
-    except ValueError:
-        return ""
-    if not target.exists() or not target.is_file():
-        return ""
-    try:
-        html_text = target.read_text(encoding="utf-8", errors="replace")
-    except Exception:
-        return ""
-    parsed = _extract_from_html(html_text, "")
-    return str(parsed.get("color", "") or "").strip()
+    return ""
 
 
 def _fetch_amazon_page(url: str, extra_headers: dict[str, str] | None = None) -> str:
@@ -973,6 +1085,85 @@ def _parse_amazon_deal_fields(page_html: str) -> dict:
     }
 
 
+def _is_profile_lock_error(exc: Exception) -> bool:
+    text = str(exc or "")
+    return (
+        "The profile appears to be in use" in text
+        or "process_singleton_posix" in text
+        or "SingletonLock" in text
+    )
+
+
+def _cleanup_profile_singleton_artifacts(profile_dir: Path) -> None:
+    socket_target: Path | None = None
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        target = profile_dir / name
+        try:
+            if name == "SingletonSocket" and target.is_symlink():
+                resolved = target.resolve(strict=False)
+                if "/tmp/org.chromium.Chromium." in str(resolved):
+                    socket_target = resolved.parent
+            if target.exists() or target.is_symlink():
+                target.unlink()
+        except FileNotFoundError:
+            continue
+        except Exception:
+            logger.exception("failed to remove chromium singleton artifact: %s", target)
+    if socket_target:
+        try:
+            if socket_target.exists():
+                socket_target.rmdir()
+        except Exception:
+            logger.exception("failed to remove chromium singleton socket dir: %s", socket_target)
+
+
+def _terminate_profile_chromium_processes(profile_dir: Path) -> None:
+    if subprocess.run(
+        ["pkill", "-f", str(profile_dir)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode not in (0, 1):
+        logger.warning("pkill returned unexpected exit code when cleaning profile: %s", profile_dir)
+
+
+def _launch_monitor_persistent_context(playwright_obj, profile_dir: Path, headless: bool):
+    launch_kwargs = dict(
+        user_data_dir=str(profile_dir),
+        headless=headless,
+        locale="en-US",
+        timezone_id="America/Los_Angeles",
+        viewport={"width": 1600, "height": 1400},
+        user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/148.0.0.0 Safari/537.36"
+        ),
+    )
+
+    def _launch_once():
+        try:
+            return playwright_obj.chromium.launch_persistent_context(
+                **build_browser_launch_kwargs(),
+                **launch_kwargs,
+            )
+        except Exception as exc:
+            if "Chromium distribution 'msedge' is not found" not in str(exc):
+                raise
+            return playwright_obj.chromium.launch_persistent_context(**launch_kwargs)
+
+    try:
+        return _launch_once()
+    except Exception as exc:
+        if not _is_profile_lock_error(exc):
+            raise
+        logger.warning("detected stale chromium profile lock, attempting recovery: %s", profile_dir)
+        _terminate_profile_chromium_processes(profile_dir)
+        _cleanup_profile_singleton_artifacts(profile_dir)
+        time.sleep(1)
+        return _launch_once()
+
+
 def _run_asin_monitor_once(config: dict) -> list[dict]:
     asins = _normalize_asin_list(config.get("asins", []))
     if not asins:
@@ -984,33 +1175,13 @@ def _run_asin_monitor_once(config: dict) -> list[dict]:
     headless = bool(config.get("headless", True))
     retry_count = max(0, int(config.get("retry_count", 2) or 0))
     retry_delay_seconds = max(0, int(config.get("retry_delay_seconds", 20) or 0))
-    today_key = date.today().isoformat()
+    today_key = _local_today().isoformat()
     now_key = _utc_now_iso()
     rows: list[dict] = []
 
     with sync_playwright() as p:
         try:
-            launch_kwargs = dict(
-                user_data_dir=str(profile_dir),
-                headless=headless,
-                locale="en-US",
-                timezone_id="America/Los_Angeles",
-                viewport={"width": 1600, "height": 1400},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/148.0.0.0 Safari/537.36"
-                ),
-            )
-            try:
-                context = p.chromium.launch_persistent_context(
-                    **build_browser_launch_kwargs(),
-                    **launch_kwargs,
-                )
-            except Exception as e:
-                if "Chromium distribution 'msedge' is not found" not in str(e):
-                    raise
-                context = p.chromium.launch_persistent_context(**launch_kwargs)
+            context = _launch_monitor_persistent_context(p, profile_dir, headless)
         except Exception as e:
             raise RuntimeError(
                 f"failed to open persistent browser profile ({profile_name}); "
@@ -1175,7 +1346,7 @@ def _run_asin_monitor_once(config: dict) -> list[dict]:
 def _execute_asin_monitor_run(force: bool = False, trigger: str = "manual") -> list[dict]:
     with _asin_monitor_lock:
         config = _load_asin_monitor_config()
-        today_key = date.today().isoformat()
+        today_key = _local_today().isoformat()
         configured_asins = _normalize_asin_list(config.get("asins", []))
         existing_rows = _load_asin_monitor_results_for_date(today_key)
         existing_asins = {
@@ -1217,7 +1388,7 @@ def _asin_monitor_worker() -> None:
         try:
             config = _load_asin_monitor_config()
             if config.get("enabled") and config.get("asins"):
-                now = datetime.now()
+                now = _local_now()
                 run_after = now.replace(
                     hour=int(config.get("run_hour", 9) or 9),
                     minute=int(config.get("run_minute", 0) or 0),
@@ -1227,12 +1398,12 @@ def _asin_monitor_worker() -> None:
                 if now >= run_after:
                     _execute_asin_monitor_run(force=False, trigger="auto")
         except Exception:
-            pass
+            logger.exception("asin monitor auto worker failed")
         time.sleep(30)
 
 
 def _build_dates(today: date, n: int) -> list[date]:
-    return [today + timedelta(days=i) for i in range(n)]
+    return [today + timedelta(days=i + 1) for i in range(n)]
 
 
 def _build_marker_list(
@@ -1261,16 +1432,22 @@ def _normalize_marker(v: str | None) -> str | None:
     if not v:
         return None
     x = str(v).strip().upper()
-    if x in {"BD", "PD", "PC"}:
+    if x in {"BD", "PD", "PC", "SP"}:
         return x
     return None
 
 
+def _counts_as_discount(marker: str | None) -> bool:
+    return _normalize_marker(marker) in {"BD", "PD"}
+
+
 def _compute(
     history_dates: list[str],
+    history_marker_dates: dict[str, str],
     future_days: int,
     selected_offsets: list[int],
     marker_overrides: dict[str, str],
+    marker_mode: str,
     mode: str,
     preferred_start: int | None,
     preferred_end: int | None,
@@ -1278,15 +1455,24 @@ def _compute(
 ) -> CalcResponse:
     today = date.today()
     future_dates = _build_dates(today, future_days)
-    history_set = {_parse_date(x) for x in history_dates}
+    normalized_history_markers = {
+        str(k): _normalize_marker(v) or "PD"
+        for k, v in (history_marker_dates or {}).items()
+        if str(k).strip()
+    }
+    history_set = {
+        _parse_date(x)
+        for x in history_dates
+        if _counts_as_discount(normalized_history_markers.get(str(x), "PD"))
+    }
 
-    # history contribution for each future day, in window [day-89, day], history only counts before today
+    # history contribution for each future day, in window [day-89, day], history counts through today
     hist_count = [0] * future_days
     for i, d in enumerate(future_dates):
         c = 0
         for k in range(90):
             t = d - timedelta(days=k)
-            if t < today and t in history_set:
+            if t <= today and t in history_set:
                 c += 1
         hist_count[i] = c
 
@@ -1295,30 +1481,47 @@ def _compute(
         if 0 <= x < future_days:
             selected[x] = True
 
-    def selected_window_counts(sel: list[bool]) -> list[int]:
+    def selected_window_counts(sel: list[bool], marks: list[str]) -> list[int]:
         pref = [0] * (future_days + 1)
         for i in range(future_days):
-            pref[i + 1] = pref[i] + (1 if sel[i] else 0)
+            pref[i + 1] = pref[i] + (1 if sel[i] and _counts_as_discount(marks[i]) else 0)
         out = [0] * future_days
         for i in range(future_days):
             l = 0 if i < 89 else i - 89
             out[i] = pref[i + 1] - pref[l]
         return out
 
-    def validate(sel: list[bool]) -> tuple[bool, list[bool]]:
-        sw = selected_window_counts(sel)
+    def resolve_markers(sel: list[bool]) -> list[str]:
+        marks = _build_marker_list(future_days, sel, mode, preferred_start, preferred_end)
+        for k, v in (marker_overrides or {}).items():
+            try:
+                idx = int(k)
+            except Exception:
+                continue
+            if idx < 0 or idx >= future_days or not sel[idx]:
+                continue
+            mk = _normalize_marker(v)
+            if mk in {"BD", "PD", "PC", "SP"}:
+                marks[idx] = mk
+        return marks
+
+    def validate(sel: list[bool], candidate_marker: str | None = None) -> tuple[bool, list[bool], list[str], list[int]]:
+        marks = resolve_markers(sel)
+        sw = selected_window_counts(sel, marks)
         viol = [False] * future_days
         for i in range(future_days):
-            if sel[i] and (hist_count[i] + sw[i] >= 45):
+            if sel[i] and _counts_as_discount(marks[i]) and (hist_count[i] + sw[i] >= 45):
                 viol[i] = True
-        return (not any(viol), viol)
+        if _normalize_marker(candidate_marker) == "PC":
+            return True, viol, marks, sw
+        return (not any(viol), viol, marks, sw)
 
     def can_select(idx: int, sel: list[bool]) -> bool:
         if sel[idx]:
             return True
         trial = sel[:]
         trial[idx] = True
-        ok, _ = validate(trial)
+        ok, _, _, _ = validate(trial)
         return ok
 
     def apply_block(start: int, seed: list[bool]) -> list[bool]:
@@ -1335,7 +1538,7 @@ def _compute(
                 if abs(start - s) < 7:
                     return False
         trial = apply_block(start, seed)
-        ok, _ = validate(trial)
+        ok, _, _, _ = validate(trial)
         return ok
 
     def recommend_even(sel_seed: list[bool]) -> list[bool]:
@@ -1355,7 +1558,7 @@ def _compute(
             trial = seed[:]
             for i in range(start, start + 7):
                 trial[i] = True
-            ok, _ = validate(trial)
+            ok, _, _, _ = validate(trial)
             return ok
 
         def apply_block(start: int, seed: list[bool]) -> list[bool]:
@@ -1540,19 +1743,7 @@ def _compute(
             selected = recommend_even(selected)
         recommended_mask = selected[:]
 
-    ok, violations = validate(selected)
-    sw = selected_window_counts(selected)
-    markers = _build_marker_list(future_days, selected, mode, preferred_start, preferred_end)
-    for k, v in (marker_overrides or {}).items():
-        try:
-            idx = int(k)
-        except Exception:
-            continue
-        if idx < 0 or idx >= future_days or not selected[idx]:
-            continue
-        mk = _normalize_marker(v)
-        if mk in {"BD", "PD"}:
-            markers[idx] = mk
+    ok, violations, markers, sw = validate(selected)
 
     availability = [False] * future_days
     for i in range(future_days):
@@ -1676,7 +1867,7 @@ def _build_reminder_days(shared: dict, today: date | None = None) -> list[dict]:
             if idx < 0 or idx >= future_days or not selected[idx]:
                 continue
             mk = _normalize_marker(v)
-            if mk in {"BD", "PD"}:
+            if mk in {"BD", "PD", "PC", "SP"}:
                 markers[idx] = mk
         marker_ranges: list[tuple[int, int, str]] = []
         start = 0
@@ -1896,7 +2087,7 @@ def _build_card_content(day_row: dict) -> dict:
     }
 
 
-def _send_due_reminders(force_today: str | None = None, dedup: bool = True) -> dict:
+def _send_due_reminders(browser_id: str, force_today: str | None = None, dedup: bool = True) -> dict:
     with _reminder_lock:
         cfg = _db_load_json("feishu_config")
         if not cfg.get("enabled"):
@@ -1906,9 +2097,9 @@ def _send_due_reminders(force_today: str | None = None, dedup: bool = True) -> d
         open_ids = [str(x).strip() for x in cfg.get("open_ids", []) if str(x).strip()]
         if not app_id or not app_secret or not open_ids:
             return {"ok": False, "sent": 0, "skipped": 0, "message": "feishu config incomplete"}
-        shared = _load_shared_state()
+        shared = _load_shared_state(browser_id)
         rows = _build_reminder_days(shared)
-        today_key = force_today or date.today().isoformat()
+        today_key = force_today or _local_today().isoformat()
         due = [r for r in rows if r.get("remind_date") == today_key]
         if not due:
             return {"ok": True, "sent": 0, "skipped": 0, "message": "no due reminder"}
@@ -1939,7 +2130,7 @@ def _send_due_reminders(force_today: str | None = None, dedup: bool = True) -> d
 def _reminder_worker() -> None:
     while True:
         try:
-            _send_due_reminders()
+            pass
         except Exception:
             pass
         time.sleep(1800)
@@ -1950,9 +2141,11 @@ async def calculate(req: CalcRequest) -> CalcResponse:
     return await asyncio.to_thread(
         _compute,
         req.history_dates,
+        req.history_marker_dates,
         req.future_days,
         req.selected_offsets,
         req.marker_overrides,
+        req.marker_mode,
         req.mode,
         req.preferred_start,
         req.preferred_end,
@@ -1994,9 +2187,9 @@ async def set_asin_monitor_config(req: AsinMonitorConfigRequest) -> dict:
 
 
 @app.get("/api/asin-monitor/results", response_model=AsinMonitorResultsResponse)
-async def get_asin_monitor_results(limit: int = 200) -> AsinMonitorResultsResponse:
+async def get_asin_monitor_results(limit: int = 5000) -> AsinMonitorResultsResponse:
     rows = await asyncio.to_thread(_load_asin_monitor_results)
-    rows = rows[: max(1, min(limit, 1000))]
+    rows = rows[: max(1, min(limit, 5000))]
     return AsinMonitorResultsResponse(results=[AsinMonitorResult(**row) for row in rows])
 
 
@@ -2016,11 +2209,16 @@ async def get_asin_monitor_progress() -> dict:
 
 
 @app.get("/api/shared-state", response_model=SharedStateResponse)
-async def get_shared_state() -> SharedStateResponse:
-    data = await asyncio.to_thread(_load_shared_state)
+async def get_shared_state(
+    x_browser_id: str | None = Header(default=None),
+    browser_id: str | None = Query(default=None),
+) -> SharedStateResponse:
+    resolved_browser_id = _resolve_browser_id(x_browser_id, browser_id)
+    data = await asyncio.to_thread(_load_shared_state, resolved_browser_id)
     return SharedStateResponse(
         records=data.get("records", []),
         product_sim=data.get("product_sim", []),
+        strategies=data.get("strategies", []),
         future_days=int(data.get("future_days", 90) or 90),
         mode=str(data.get("mode", "even") or "even"),
         custom_start=int(data.get("custom_start", 0) or 0),
@@ -2028,44 +2226,83 @@ async def get_shared_state() -> SharedStateResponse:
         selected_key=str(data.get("selected_key", "") or ""),
         file_name=str(data.get("file_name", "") or ""),
         marker_mode=str(data.get("marker_mode", "PD") or "PD"),
+        import_template_config=data.get("import_template_config", {}) or {},
     )
 
 
 @app.post("/api/shared-state")
-async def set_shared_state(req: SharedStateRequest) -> dict:
+async def set_shared_state(
+    req: SharedStateRequest,
+    x_browser_id: str | None = Header(default=None),
+    browser_id: str | None = Query(default=None),
+) -> dict:
+    resolved_browser_id = _resolve_browser_id(x_browser_id, browser_id)
     payload = req.model_dump()
-    await asyncio.to_thread(_save_shared_state, payload)
+    await asyncio.to_thread(_save_shared_state, resolved_browser_id, payload)
     return {"ok": True}
 
 
 @app.post("/api/upload-source")
-async def upload_source(file: UploadFile = File(...)) -> dict:
+async def upload_source(
+    file: UploadFile = File(...),
+    x_browser_id: str | None = Header(default=None),
+    browser_id: str | None = Query(default=None),
+) -> dict:
+    resolved_browser_id = _resolve_browser_id(x_browser_id, browser_id)
     content = await file.read()
-    await asyncio.to_thread(SOURCE_FILE_PATH.write_bytes, content)
-    data = await asyncio.to_thread(_load_shared_state)
+    await asyncio.to_thread(
+        _save_browser_source_file,
+        resolved_browser_id,
+        file.filename or "source_import.xlsx",
+        content,
+        file.content_type or "application/octet-stream",
+    )
+    data = await asyncio.to_thread(_load_shared_state, resolved_browser_id)
     data["file_name"] = file.filename or "source_import.xlsx"
-    await asyncio.to_thread(_save_shared_state, data)
+    await asyncio.to_thread(_save_shared_state, resolved_browser_id, data)
     return {"ok": True, "file_name": data["file_name"]}
 
 
 @app.get("/api/source-file")
-async def download_source_file() -> FileResponse:
-    if not SOURCE_FILE_PATH.exists():
+async def download_source_file(
+    x_browser_id: str | None = Header(default=None),
+    browser_id: str | None = Query(default=None),
+) -> Response:
+    resolved_browser_id = _resolve_browser_id(x_browser_id, browser_id)
+    source_file = await asyncio.to_thread(_load_browser_source_file, resolved_browser_id)
+    if not source_file:
         raise HTTPException(status_code=404, detail="source file not found")
-    data = await asyncio.to_thread(_load_shared_state)
-    fname = data.get("file_name") or "source_import.xlsx"
-    return FileResponse(
-        path=SOURCE_FILE_PATH,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=fname,
+    fname = source_file["file_name"]
+    return Response(
+        content=source_file["file_blob"],
+        media_type=source_file["file_content_type"],
+        headers={
+            "Content-Disposition": f'attachment; filename="{fname}"',
+        },
     )
 
 
 @app.head("/api/source-file")
-async def head_source_file() -> dict:
-    if not SOURCE_FILE_PATH.exists():
+async def head_source_file(
+    x_browser_id: str | None = Header(default=None),
+    browser_id: str | None = Query(default=None),
+) -> dict:
+    resolved_browser_id = _resolve_browser_id(x_browser_id, browser_id)
+    source_file = await asyncio.to_thread(_load_browser_source_file, resolved_browser_id)
+    if not source_file:
         raise HTTPException(status_code=404, detail="source file not found")
     return {"ok": True}
+
+
+@app.get("/api/fixed-export-template")
+async def download_fixed_export_template() -> FileResponse:
+    if not FIXED_EXPORT_TEMPLATE_FILE.exists():
+        raise HTTPException(status_code=404, detail="fixed export template not found")
+    return FileResponse(
+        path=FIXED_EXPORT_TEMPLATE_FILE,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=FIXED_EXPORT_TEMPLATE_FILE.name,
+    )
 
 
 @app.get("/api/feishu-config", response_model=FeishuConfigResponse)
@@ -2093,15 +2330,23 @@ async def set_feishu_config(req: FeishuConfigRequest) -> dict:
 
 
 @app.get("/api/reminders/preview", response_model=list[ReminderDay])
-async def preview_reminders() -> list[ReminderDay]:
-    shared = await asyncio.to_thread(_load_shared_state)
+async def preview_reminders(
+    x_browser_id: str | None = Header(default=None),
+    browser_id: str | None = Query(default=None),
+) -> list[ReminderDay]:
+    resolved_browser_id = _resolve_browser_id(x_browser_id, browser_id)
+    shared = await asyncio.to_thread(_load_shared_state, resolved_browser_id)
     rows = await asyncio.to_thread(_build_reminder_days, shared)
     return [ReminderDay(**x) for x in rows]
 
 
 @app.post("/api/reminders/send-now")
-async def send_reminders_now() -> dict:
-    return await asyncio.to_thread(_send_due_reminders, None, False)
+async def send_reminders_now(
+    x_browser_id: str | None = Header(default=None),
+    browser_id: str | None = Query(default=None),
+) -> dict:
+    resolved_browser_id = _resolve_browser_id(x_browser_id, browser_id)
+    return await asyncio.to_thread(_send_due_reminders, resolved_browser_id, None, False)
 
 
 @app.get("/api/feishu/departments")

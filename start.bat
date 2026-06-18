@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 chcp 65001 >nul
 setlocal
 set PORT=8010
@@ -14,7 +14,8 @@ if not exist .venv (
 
 call .venv\Scripts\activate.bat
 
-python -c "import fastapi,uvicorn,pydantic" 1>nul 2>nul
+REM Validate runtime dependencies before startup.
+python -c "import fastapi,uvicorn,pydantic,multipart,openpyxl,bs4,playwright,chinese_calendar" 1>nul 2>nul
 if errorlevel 1 (
   echo Missing dependencies. Trying to install from requirements.txt ...
   pip install -r requirements.txt || (

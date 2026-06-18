@@ -108,6 +108,7 @@
       align-self: end;
     }
     .import-box {
+      position: relative;
       padding: 0;
       border: none;
       background: transparent;
@@ -116,6 +117,37 @@
       display: flex;
       align-items: center;
       gap: 8px;
+    }
+    .import-loading-mask {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: rgba(246, 250, 255, 0.82);
+      border-radius: 10px;
+      color: #2f6fb7;
+      font-size: 13px;
+      font-weight: 600;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 2;
+      backdrop-filter: blur(2px);
+    }
+    .import-loading-mask.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .import-loading-spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #d6e4f8;
+      border-top-color: #3f78d8;
+      border-radius: 50%;
+      animation: monitorSpin 0.85s linear infinite;
+      flex: 0 0 auto;
     }
     .file-link-btn {
       height: 38px;
@@ -193,6 +225,11 @@
     }
 
     button:hover { filter: brightness(0.95); }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+      filter: none;
+    }
     button.secondary {
       background: #edf5ff;
       color: #1f5ea8;
@@ -238,10 +275,86 @@
       background: #6b7f95;
       border-color: #6b7f95;
     }
+    .marker-btn-sp {
+      background: #c85a54;
+      border-color: #c85a54;
+    }
     .marker-btn-active {
       border-color: #ffffff !important;
       box-shadow: 0 0 0 3px rgba(47, 128, 237, 0.26), 0 10px 22px rgba(35, 85, 140, 0.3);
       transform: scale(1.05);
+    }
+    .sku-switch-float {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 236px;
+      max-height: min(68vh, 620px);
+      padding: 10px 8px;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      border-radius: 20px;
+      border: 1px solid #c9def6;
+      background: #ffffff;
+      box-shadow: 0 14px 32px rgba(35, 85, 140, 0.16);
+      z-index: 28;
+    }
+    .sku-switch-head {
+      padding: 0 4px 4px;
+      color: #5c7fa5;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .sku-switch-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .sku-switch-list::-webkit-scrollbar {
+      width: 6px;
+    }
+    .sku-switch-list::-webkit-scrollbar-thumb {
+      background: #c7daf1;
+      border-radius: 999px;
+    }
+    .sku-switch-btn {
+      width: 100%;
+      min-height: 52px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid #d2e3f6;
+      background: linear-gradient(180deg, #f7fbff 0%, #edf5ff 100%);
+      color: #24527f;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+      text-align: left;
+      box-shadow: 0 6px 14px rgba(48, 111, 183, 0.08);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+      white-space: normal;
+      word-break: break-word;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      text-overflow: ellipsis;
+      align-items: center;
+    }
+    .sku-switch-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 18px rgba(48, 111, 183, 0.14);
+    }
+    .sku-switch-btn.active {
+      border-color: #2f80ed;
+      background: linear-gradient(180deg, #3385f3 0%, #2f6fd5 100%);
+      color: #fff;
+      box-shadow: 0 6px 14px rgba(35, 85, 140, 0.14);
     }
 
     .actions {
@@ -461,7 +574,7 @@
       flex-wrap: wrap;
       margin-left: auto;
     }
-    .monitor-date-switch select {
+    .monitor-date-switch input[type="date"] {
       min-width: 160px;
     }
     .monitor-date-label {
@@ -707,6 +820,10 @@
       background: #eef3fa;
       border-color: #ccd9ea;
     }
+    .day.marker-sp {
+      background: #fde9e6;
+      border-color: #e6a29a;
+    }
     .day.recommended { box-shadow: inset 0 0 0 2px #2f80ed; }
     .day.violation {
       border-color: #de5e5e;
@@ -795,6 +912,11 @@
       border-color: #d7e2f0;
       color: #5c718b;
     }
+    .day.marker-sp .tag {
+      background: #fff1ef;
+      border-color: #efc0b8;
+      color: #8b4d45;
+    }
     .day.recommended .tag {
       background: #e7f1ff;
       border-color: #8db8eb;
@@ -832,6 +954,135 @@
     border-radius: 14px;
     padding: 14px;
     box-shadow: 0 12px 32px rgba(31, 74, 124, 0.25);
+  }
+  .strategy-modal-card {
+    width: min(520px, calc(100vw - 32px));
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border: 1px solid rgba(171, 205, 240, 0.78);
+    border-radius: 24px;
+    background:
+      radial-gradient(circle at top right, rgba(114, 182, 255, 0.18), transparent 34%),
+      linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+    box-shadow:
+      0 28px 56px rgba(30, 72, 122, 0.2),
+      0 8px 22px rgba(39, 104, 180, 0.12);
+  }
+  .strategy-modal-shell {
+    position: relative;
+    padding: 26px 26px 22px;
+  }
+  .strategy-modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .strategy-modal-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid #d5e5fa;
+    background: rgba(239, 247, 255, 0.92);
+    color: #3e6d9d;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .strategy-modal-title {
+    margin: 10px 0 6px;
+    color: #193c65;
+    font-size: 24px;
+    line-height: 1.2;
+    font-weight: 800;
+  }
+  .strategy-modal-subtitle {
+    margin: 0;
+    color: #6885a6;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .strategy-modal-body {
+    display: grid;
+    gap: 14px;
+  }
+  .strategy-modal-field {
+    display: grid;
+    gap: 8px;
+  }
+  .strategy-modal-label {
+    color: #335f8d;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .strategy-modal-input {
+    width: 100%;
+    height: 48px;
+    border-radius: 14px;
+    border: 1px solid #b9d5f3;
+    background: rgba(255, 255, 255, 0.98);
+    padding: 0 14px;
+    font-size: 15px;
+    color: #163b63;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  }
+  .strategy-modal-input:focus {
+    outline: none;
+    border-color: #5f9cf1;
+    box-shadow: 0 0 0 4px rgba(95, 156, 241, 0.16);
+    transform: translateY(-1px);
+  }
+  .strategy-modal-note {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(238, 246, 255, 0.88);
+    border: 1px solid #d4e5f8;
+    color: #577596;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .strategy-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .strategy-modal-btn {
+    min-width: 104px;
+    height: 42px;
+    border-radius: 12px;
+    border: 1px solid #c5daf3;
+    background: #fff;
+    color: #43698f;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  .strategy-modal-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 18px rgba(56, 109, 175, 0.12);
+  }
+  .strategy-modal-btn.primary {
+    border-color: #2f7ae5;
+    background: linear-gradient(135deg, #2f7ae5 0%, #5ea6ff 100%);
+    color: #fff;
+    box-shadow: 0 12px 22px rgba(47, 122, 229, 0.22);
+  }
+  .strategy-modal-btn.primary:hover {
+    box-shadow: 0 14px 24px rgba(47, 122, 229, 0.28);
+  }
+  .strategy-modal-btn.danger {
+    border-color: #efc0bf;
+    background: linear-gradient(135deg, #fff5f4 0%, #ffe5e2 100%);
+    color: #b94e44;
+  }
+  .strategy-modal-btn.danger:hover {
+    box-shadow: 0 12px 20px rgba(201, 89, 76, 0.14);
   }
   .modal-head {
     display: flex;
@@ -995,6 +1246,10 @@
         height: 48px;
         font-size: 11px;
       }
+      .sku-switch-float {
+        left: 10px !important;
+        width: 178px;
+      }
     }
   </style>
 </head>
@@ -1017,6 +1272,10 @@
             <input id="fileInput" class="file-input-hidden" type="file" accept=".xlsx,.xls" />
             <button id="fileBtn" type="button" class="file-btn">选择文件</button>
             <div id="fileName" class="file-name">未选择文件</div>
+          </div>
+          <div id="importLoadingMask" class="import-loading-mask" aria-hidden="true">
+            <div class="import-loading-spinner"></div>
+            <span>正在导入并解析 Excel...</span>
           </div>
         </div>
       </div>
@@ -1050,6 +1309,12 @@
       <button id="recommendBtn">一键自动推荐</button>
       <button id="clearBtn" class="secondary">清空模拟</button>
       <button id="saveBtn" class="secondary">保存模拟</button>
+      <select id="strategySelect" class="secondary" style="min-width:180px;">
+        <option value="">选择策略</option>
+      </select>
+      <button id="saveStrategyBtn" class="secondary" type="button">保存为策略</button>
+      <button id="applyStrategyBtn" class="secondary" type="button">应用策略</button>
+      <button id="deleteStrategyBtn" class="secondary" type="button">删除策略</button>
       <button id="exportBtn" class="secondary">导出结果</button>
       <button id="openFeishuModalBtn" class="secondary" type="button">飞书配置</button>
     </div>
@@ -1098,6 +1363,32 @@
     </section>
   </div>
 
+  <div id="strategyModal" class="modal-mask">
+    <section class="modal-card strategy-modal-card" role="dialog" aria-modal="true" aria-labelledby="strategyModalTitle">
+      <div class="strategy-modal-shell">
+        <div class="strategy-modal-head">
+          <div>
+            <div id="strategyModalKicker" class="strategy-modal-kicker">策略操作</div>
+            <h3 id="strategyModalTitle" class="strategy-modal-title">保存策略</h3>
+            <p id="strategyModalSubtitle" class="strategy-modal-subtitle">把当前 ASIN 的未来模拟沉淀成可复用策略。</p>
+          </div>
+          <button id="closeStrategyModalBtn" class="close-btn" type="button" aria-label="关闭策略弹窗">×</button>
+        </div>
+        <div class="strategy-modal-body">
+          <div id="strategyModalField" class="strategy-modal-field">
+            <label for="strategyNameInput" class="strategy-modal-label">策略名称</label>
+            <input id="strategyNameInput" class="strategy-modal-input" type="text" maxlength="60" placeholder="例如：Prime Day 前后拉满" />
+          </div>
+          <div id="strategyModalNote" class="strategy-modal-note">保存后可以在其他 ASIN 上直接复用这套未来排期。</div>
+        </div>
+        <div class="strategy-modal-actions">
+          <button id="cancelStrategyModalBtn" class="strategy-modal-btn" type="button">取消</button>
+          <button id="confirmStrategyModalBtn" class="strategy-modal-btn primary" type="button">确定</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <section class="card">
     <details class="history-box">
       <summary>表格记录与历史记录（可折叠）</summary>
@@ -1141,7 +1432,7 @@
         <button id="refreshAsinMonitorBtn" type="button" class="secondary">刷新结果</button>
         <div class="monitor-date-switch">
           <button id="asinMonitorPrevDateBtn" type="button" class="secondary">上一天</button>
-          <select id="asinMonitorDateSelect"></select>
+          <input id="asinMonitorDateSelect" type="date" />
           <button id="asinMonitorNextDateBtn" type="button" class="secondary">下一天</button>
         </div>
       </div>
@@ -1286,13 +1577,19 @@
   </section>
 </div>
 <div id="markerFloat" class="marker-float" aria-label="标记模式">
-  <button id="markerPdBtn" type="button" class="marker-btn marker-btn-pd" title="PED 模式">PED</button>
+  <button id="markerPdBtn" type="button" class="marker-btn marker-btn-pd" title="Discount 模式">Discount</button>
   <button id="markerBdBtn" type="button" class="marker-btn marker-btn-bd" title="BD 模式">BD</button>
-  <button id="markerPcBtn" type="button" class="marker-btn marker-btn-pc" title="PP 模式">PP</button>
+  <button id="markerPcBtn" type="button" class="marker-btn marker-btn-pc" title="Coupon 模式">Coupon</button>
+  <button id="markerSpBtn" type="button" class="marker-btn marker-btn-sp" title="大促 模式">大促</button>
+</div>
+<div id="skuSwitchFloat" class="sku-switch-float" aria-label="SKU 快速切换">
+  <div class="sku-switch-head">SKU</div>
+  <div id="skuSwitchList" class="sku-switch-list"></div>
 </div>
 
 <script>
   const API_BASE = "";
+  const BROWSER_ID_STORAGE_KEY = "discount_browser_id_v1";
   const state = {
     recordsByProduct: new Map(),
     selectedKey: "",
@@ -1302,7 +1599,12 @@
     recommendedOffsets: new Set(),
     dayRows: [],
     loading: false,
+    importing: false,
+    initializing: true,
+    importTemplateConfig: null,
+    pendingImportFile: null,
     productSim: new Map(),
+    strategies: new Map(),
     importedFileName: "",
     markerMode: "PD",
   };
@@ -1310,12 +1612,28 @@
   const fileInput = document.getElementById("fileInput");
   const fileBtn = document.getElementById("fileBtn");
   const fileName = document.getElementById("fileName");
+  const importLoadingMask = document.getElementById("importLoadingMask");
+  const importLoadingMaskText = importLoadingMask ? importLoadingMask.querySelector("span") : null;
   const productSelect = document.getElementById("productSelect");
   const futureDaysInput = document.getElementById("futureDays");
   const modeSelect = document.getElementById("modeSelect");
   const recommendBtn = document.getElementById("recommendBtn");
   const clearBtn = document.getElementById("clearBtn");
   const saveBtn = document.getElementById("saveBtn");
+  const strategySelect = document.getElementById("strategySelect");
+  const saveStrategyBtn = document.getElementById("saveStrategyBtn");
+  const applyStrategyBtn = document.getElementById("applyStrategyBtn");
+  const deleteStrategyBtn = document.getElementById("deleteStrategyBtn");
+  const strategyModal = document.getElementById("strategyModal");
+  const closeStrategyModalBtn = document.getElementById("closeStrategyModalBtn");
+  const cancelStrategyModalBtn = document.getElementById("cancelStrategyModalBtn");
+  const confirmStrategyModalBtn = document.getElementById("confirmStrategyModalBtn");
+  const strategyModalKicker = document.getElementById("strategyModalKicker");
+  const strategyModalTitle = document.getElementById("strategyModalTitle");
+  const strategyModalSubtitle = document.getElementById("strategyModalSubtitle");
+  const strategyModalField = document.getElementById("strategyModalField");
+  const strategyModalNote = document.getElementById("strategyModalNote");
+  const strategyNameInput = document.getElementById("strategyNameInput");
   const exportBtn = document.getElementById("exportBtn");
   const customStartWrap = document.getElementById("customStartWrap");
   const customEndWrap = document.getElementById("customEndWrap");
@@ -1324,7 +1642,10 @@
   const markerPdBtn = document.getElementById("markerPdBtn");
   const markerBdBtn = document.getElementById("markerBdBtn");
   const markerPcBtn = document.getElementById("markerPcBtn");
+  const markerSpBtn = document.getElementById("markerSpBtn");
   const markerFloat = document.getElementById("markerFloat");
+  const skuSwitchFloat = document.getElementById("skuSwitchFloat");
+  const skuSwitchList = document.getElementById("skuSwitchList");
   const pageTabCalculator = document.getElementById("pageTabCalculator");
   const pageTabMonitor = document.getElementById("pageTabMonitor");
   const calculatorPage = document.getElementById("calculatorPage");
@@ -1349,6 +1670,9 @@
   const asinTrendRange7dBtn = document.getElementById("asinTrendRange7dBtn");
   const asinTrendRange30dBtn = document.getElementById("asinTrendRange30dBtn");
   let asinTrendChart = null;
+  let asinMonitorProgressPollTimer = null;
+  let asinMonitorProgressVisible = false;
+  let asinMonitorProgressRefreshPending = false;
   const asinMonitorSummary = document.getElementById("asinMonitorSummary");
   const asinMonitorInput = document.getElementById("asinMonitorInput");
   const asinMonitorZip = document.getElementById("asinMonitorZip");
@@ -1398,6 +1722,7 @@
   let asinMonitorSelectedPsku = "";
   let asinMonitorConfiguredAsins = [];
   let asinMonitorResultsLoading = false;
+  const browserId = getBrowserId();
   const asinMonitorPriceFields = [
     { key: "discount_price", label: "Discount Price" },
     { key: "list_price", label: "List Price" },
@@ -1409,6 +1734,10 @@
     ...asinMonitorPriceFields,
     { key: "deal_price", label: "Deal Price" },
   ];
+  const strategyModalState = {
+    mode: "save",
+    resolve: null,
+  };
   const asinMonitorTrendState = {
     asin: "",
     fieldKey: "deal_price",
@@ -1416,6 +1745,32 @@
     rangeDays: 30,
     legendSelected: {},
   };
+
+  function getBrowserId() {
+    try {
+      const saved = localStorage.getItem(BROWSER_ID_STORAGE_KEY);
+      if (saved) return saved;
+      const created = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `browser-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      localStorage.setItem(BROWSER_ID_STORAGE_KEY, created);
+      return created;
+    } catch (_) {
+      return `browser-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+  }
+
+  function apiHeaders(extra = {}) {
+    return {
+      "X-Browser-Id": browserId,
+      ...extra,
+    };
+  }
+
+  function apiUrl(path) {
+    const sep = path.includes("?") ? "&" : "?";
+    return `${API_BASE}${path}${sep}browser_id=${encodeURIComponent(browserId)}`;
+  }
   function todayIso() {
     const t = new Date();
     return fmtDate(new Date(t.getFullYear(), t.getMonth(), t.getDate()));
@@ -1434,10 +1789,111 @@
     return Math.floor((b.getTime() - a.getTime()) / 86400000);
   }
 
+  function futureBaseIso() {
+    return dateAddIso(todayIso(), 1);
+  }
+
   function markerMapToObject(map) {
     const out = {};
     for (const [k, v] of map.entries()) out[String(k)] = String(v);
     return out;
+  }
+
+  function clonePlainObject(obj) {
+    return obj && typeof obj === "object" ? { ...obj } : {};
+  }
+
+  function renderStrategyOptions() {
+    if (!strategySelect) return;
+    const current = strategySelect.value || "";
+    strategySelect.innerHTML = "";
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "选择策略";
+    strategySelect.appendChild(empty);
+    const entries = Array.from(state.strategies.entries()).sort((a, b) => a[0].localeCompare(b[0], "zh-CN"));
+    for (const [name, strategy] of entries) {
+      const option = document.createElement("option");
+      option.value = name;
+      const count = Array.isArray(strategy?.selectedDates)
+        ? strategy.selectedDates.length
+        : Array.isArray(strategy?.selectedOffsets)
+        ? strategy.selectedOffsets.length
+        : 0;
+      option.textContent = `${name}${count ? ` (${count}天)` : ""}`;
+      strategySelect.appendChild(option);
+    }
+    strategySelect.value = state.strategies.has(current) ? current : "";
+  }
+
+  function getCurrentStrategyPayload() {
+    if (!state.selectedKey) return null;
+    saveCurrentProductState();
+    const saved = state.productSim.get(state.selectedKey);
+    if (!saved) return null;
+    const dates = Array.isArray(saved.selectedDates) ? saved.selectedDates.filter(Boolean).sort() : [];
+    const markerDates = (saved.selectedMarkerDates && typeof saved.selectedMarkerDates === "object")
+      ? saved.selectedMarkerDates
+      : {};
+    const selectedMarkerDates = {};
+    for (const ds of dates) {
+      selectedMarkerDates[ds] = normalizePromoMarker(markerDates[ds]) || "PD";
+    }
+    return {
+      selectedDates: dates,
+      selectedMarkerDates,
+      createdAt: new Date().toISOString(),
+      sourceKey: state.selectedKey,
+    };
+  }
+
+  function applyStrategyToCurrentProduct(name) {
+    const strategy = state.strategies.get(name);
+    if (!strategy || !state.selectedKey) return false;
+    const base = futureBaseIso();
+    const explicitDates = Array.isArray(strategy.selectedDates)
+      ? strategy.selectedDates.filter((ds) => String(ds || "").trim()).sort()
+      : [];
+    const fallbackOffsets = Array.isArray(strategy.selectedOffsets)
+      ? strategy.selectedOffsets.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x >= 0).sort((a, b) => a - b)
+      : [];
+    const rawDateMarkers = strategy.selectedMarkerDates && typeof strategy.selectedMarkerDates === "object"
+      ? strategy.selectedMarkerDates
+      : {};
+    const rawOffsetMarkers = strategy.markerOverrides && typeof strategy.markerOverrides === "object"
+      ? strategy.markerOverrides
+      : {};
+    const sourceDates = explicitDates.length
+      ? explicitDates
+      : fallbackOffsets.map((off) => dateAddIso(base, off));
+    const markerOverrides = {};
+    const selectedDates = [];
+    const selectedMarkerDates = {};
+    for (const ds of sourceDates) {
+      if (ds < base) continue;
+      const off = diffDaysIso(base, ds);
+      if (!Number.isFinite(off) || off < 0) continue;
+      const marker = normalizePromoMarker(rawDateMarkers[ds]) || normalizePromoMarker(rawOffsetMarkers[String(off)]) || "PD";
+      markerOverrides[String(off)] = marker;
+      selectedDates.push(ds);
+      selectedMarkerDates[ds] = marker;
+    }
+    const offsets = selectedDates
+      .map((ds) => diffDaysIso(base, ds))
+      .filter((off) => Number.isFinite(off) && off >= 0)
+      .sort((a, b) => a - b);
+    state.selectedOffsets = new Set(offsets);
+    state.selectedMarkers = new Map(Object.entries(markerOverrides).map(([k, v]) => [Number(k), v]));
+    state.recommendedOffsets = new Set();
+    state.productSim.set(state.selectedKey, {
+      selectedOffsets: offsets,
+      selectedMarkers: clonePlainObject(markerOverrides),
+      selectedMarkerDates,
+      recommendedOffsets: [],
+      selectedDates,
+      baseDate: base,
+    });
+    return true;
   }
 
   function updateModeVisibility() {
@@ -1446,11 +1902,37 @@
     customEndWrap.style.display = isCustom ? "flex" : "none";
   }
 
+  function syncImportBusyUi() {
+    const busy = state.importing || state.initializing;
+    fileBtn.disabled = busy;
+    fileInput.disabled = busy;
+    if (importLoadingMask) {
+      importLoadingMask.classList.toggle("active", busy);
+      importLoadingMask.setAttribute("aria-hidden", busy ? "false" : "true");
+    }
+    if (importLoadingMaskText) {
+      importLoadingMaskText.textContent = state.initializing
+        ? "页面数据加载中..."
+        : "正在导入并解析 Excel...";
+    }
+  }
+
+  function setImportLoading(loading) {
+    state.importing = !!loading;
+    syncImportBusyUi();
+  }
+
+  function setInitializing(loading) {
+    state.initializing = !!loading;
+    syncImportBusyUi();
+  }
+
   function renderMarkerModeButtons() {
     const items = [
       [markerPdBtn, "PD", "marker-btn-pd"],
       [markerBdBtn, "BD", "marker-btn-bd"],
       [markerPcBtn, "PC", "marker-btn-pc"],
+      [markerSpBtn, "SP", "marker-btn-sp"],
     ];
     for (const [btn, mode, cls] of items) {
       btn.classList.add(cls);
@@ -1461,8 +1943,10 @@
 
   function displayMarker(marker) {
     const x = String(marker || "").toUpperCase();
-    if (x === "PD") return "PED";
-    if (x === "PC") return "PP";
+    if (x === "NS") return "未选";
+    if (x === "PD") return "Discount";
+    if (x === "PC") return "Coupon";
+    if (x === "SP") return "大促";
     return x;
   }
 
@@ -1478,19 +1962,89 @@
     markerFloat.style.left = `${Math.round(left)}px`;
   }
 
+  function getSkuSwitchLabel(key, product) {
+    const sku = String(product?.meta?.SKU || "").trim();
+    if (sku) return sku;
+    const label = String(product?.label || key || "").trim();
+    if (label.includes("|")) {
+      const parts = label.split("|").map((x) => x.trim()).filter(Boolean);
+      if (parts.length > 1) return parts[1];
+    }
+    return label || key;
+  }
+
+  function updateSkuSwitchPosition() {
+    if (!skuSwitchFloat || !futureCard || skuSwitchFloat.style.display === "none") return;
+    const rect = futureCard.getBoundingClientRect();
+    const gap = 14;
+    const panelWidth = skuSwitchFloat.offsetWidth || 112;
+    let left = rect.left - panelWidth - gap;
+    const minLeft = 10;
+    const maxLeft = window.innerWidth - panelWidth - 10;
+    if (left < minLeft) left = minLeft;
+    if (left > maxLeft) left = maxLeft;
+    skuSwitchFloat.style.left = `${Math.round(left)}px`;
+  }
+
+  function renderSkuSwitchPanel() {
+    if (!skuSwitchList || !skuSwitchFloat) return;
+    skuSwitchList.innerHTML = "";
+    const entries = Array.from(state.recordsByProduct.entries());
+    const shouldShow = calculatorPage.classList.contains("active") && entries.length > 0;
+    skuSwitchFloat.style.display = shouldShow ? "flex" : "none";
+    if (!shouldShow) return;
+    for (const [key, product] of entries) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "sku-switch-btn";
+      if (key === state.selectedKey) btn.classList.add("active");
+      btn.textContent = getSkuSwitchLabel(key, product);
+      btn.title = product?.label || key;
+      btn.addEventListener("click", async () => {
+        if (state.loading || key === state.selectedKey) return;
+        saveCurrentProductState();
+        state.selectedKey = key;
+        productSelect.value = key;
+        loadProductState(key);
+        renderSkuSwitchPanel();
+        await recalc({ recommend: false });
+        renderHistoryPanel();
+      });
+      skuSwitchList.appendChild(btn);
+    }
+    updateSkuSwitchPosition();
+  }
+
   function saveCurrentProductState() {
     if (!state.selectedKey) return;
-    const base = todayIso();
-    const selectedDates = Array.from(state.selectedOffsets)
+    const base = futureBaseIso();
+    const futureDays = Math.max(1, Number(futureDaysInput.value) || 90);
+    const visibleEnd = dateAddIso(base, futureDays - 1);
+    const saved = state.productSim.get(state.selectedKey);
+    const preservedDates = Array.isArray(saved?.selectedDates)
+      ? saved.selectedDates.filter((ds) => String(ds || "").trim() && ds > visibleEnd)
+      : [];
+    const preservedMarkerDates = {};
+    const savedMarkerDates = (saved?.selectedMarkerDates && typeof saved.selectedMarkerDates === "object")
+      ? saved.selectedMarkerDates
+      : {};
+    for (const ds of preservedDates) {
+      preservedMarkerDates[ds] = normalizePromoMarker(savedMarkerDates[ds]) || "PD";
+    }
+    const visibleDates = Array.from(state.selectedOffsets)
       .map((off) => dateAddIso(base, Number(off)))
       .sort();
-    const selectedMarkerDates = {};
+    const selectedDates = [...new Set([...visibleDates, ...preservedDates])].sort();
+    const selectedMarkerDates = { ...preservedMarkerDates };
     for (const off of state.selectedOffsets) {
       const marker = state.selectedMarkers.get(Number(off)) || "PD";
       selectedMarkerDates[dateAddIso(base, Number(off))] = marker;
     }
     state.productSim.set(state.selectedKey, {
-      selectedOffsets: Array.from(state.selectedOffsets),
+      selectedOffsets: selectedDates
+        .map((ds) => diffDaysIso(base, ds))
+        .filter((x) => Number.isFinite(x) && x >= 0)
+        .sort((a, b) => a - b),
       selectedMarkers: markerMapToObject(state.selectedMarkers),
       selectedMarkerDates,
       recommendedOffsets: Array.from(state.recommendedOffsets),
@@ -1522,7 +2076,16 @@
         selectedMarkerDates: sim?.selectedMarkerDates || {},
         recommendedOffsets: sim?.recommendedOffsets || [],
         selectedDates: sim?.selectedDates || [],
-        baseDate: sim?.baseDate || todayIso(),
+        baseDate: sim?.baseDate || futureBaseIso(),
+      })),
+      strategies: Array.from(state.strategies.entries()).map(([name, strategy]) => ({
+        name,
+        selectedDates: strategy?.selectedDates || [],
+        selectedMarkerDates: strategy?.selectedMarkerDates || {},
+        selectedOffsets: strategy?.selectedOffsets || [],
+        markerOverrides: strategy?.markerOverrides || {},
+        createdAt: strategy?.createdAt || "",
+        sourceKey: strategy?.sourceKey || "",
       })),
       future_days: Number(futureDaysInput.value) || 90,
       mode: modeSelect.value,
@@ -1531,11 +2094,12 @@
       selected_key: state.selectedKey || ""
       ,
       file_name: state.importedFileName || "",
-      marker_mode: state.markerMode || "PD"
+      marker_mode: state.markerMode || "PD",
+      import_template_config: state.importTemplateConfig || {}
     };
     await fetch(`${API_BASE}/api/shared-state`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(payload)
     });
   }
@@ -1566,9 +2130,24 @@
         selectedMarkerDates: s.selectedMarkerDates || {},
         recommendedOffsets: s.recommendedOffsets || [],
         selectedDates: s.selectedDates || [],
-        baseDate: s.baseDate || todayIso(),
+        baseDate: s.baseDate || futureBaseIso(),
       });
     }
+    state.strategies.clear();
+    const strategies = Array.isArray(data.strategies) ? data.strategies : [];
+    for (const item of strategies) {
+      const name = String(item?.name || "").trim();
+      if (!name) continue;
+      state.strategies.set(name, {
+        selectedDates: Array.isArray(item?.selectedDates) ? item.selectedDates : [],
+        selectedMarkerDates: item?.selectedMarkerDates && typeof item.selectedMarkerDates === "object" ? item.selectedMarkerDates : {},
+        selectedOffsets: Array.isArray(item?.selectedOffsets) ? item.selectedOffsets : [],
+        markerOverrides: item?.markerOverrides && typeof item.markerOverrides === "object" ? item.markerOverrides : {},
+        createdAt: String(item?.createdAt || ""),
+        sourceKey: String(item?.sourceKey || ""),
+      });
+    }
+    renderStrategyOptions();
     if (records.length) {
       productSelect.disabled = false;
       const preferred = data.selected_key && state.recordsByProduct.has(data.selected_key)
@@ -1579,10 +2158,14 @@
       loadProductState(preferred);
     }
     state.importedFileName = data.file_name || "";
-    state.markerMode = ["BD", "PD", "PC"].includes(String(data.marker_mode || "").toUpperCase())
+    state.importTemplateConfig = data.import_template_config && typeof data.import_template_config === "object"
+      ? data.import_template_config
+      : null;
+    state.markerMode = ["BD", "PD", "PC", "SP"].includes(String(data.marker_mode || "").toUpperCase())
       ? String(data.marker_mode).toUpperCase()
       : "PD";
     renderMarkerModeButtons();
+    renderSkuSwitchPanel();
     if (state.importedFileName) {
       fileName.textContent = state.importedFileName;
     }
@@ -1597,13 +2180,14 @@
       return;
     }
     const tIso = todayIso();
+    const futureBase = futureBaseIso();
     let dates = Array.isArray(saved.selectedDates) ? saved.selectedDates.filter(Boolean) : [];
     if (!dates.length) {
-      const base = saved.baseDate || tIso;
+      const base = saved.baseDate || futureBase;
       dates = (saved.selectedOffsets || []).map((off) => dateAddIso(base, Number(off)));
     }
     const futureOffsets = dates
-      .map((ds) => diffDaysIso(tIso, ds))
+      .map((ds) => diffDaysIso(futureBase, ds))
       .filter((x) => Number.isFinite(x) && x >= 0)
       .sort((a, b) => a - b);
     state.selectedOffsets = new Set(futureOffsets);
@@ -1611,19 +2195,19 @@
     const markerDates = saved.selectedMarkerDates || {};
     if (markerDates && typeof markerDates === "object" && Object.keys(markerDates).length) {
       for (const [ds, mk] of Object.entries(markerDates)) {
-        const off = diffDaysIso(tIso, ds);
+        const off = diffDaysIso(futureBase, ds);
         if (!Number.isFinite(off) || off < 0) continue;
         const marker = String(mk || "").toUpperCase();
-        if (marker === "BD" || marker === "PD") state.selectedMarkers.set(off, marker);
+        if (marker === "BD" || marker === "PD" || marker === "PC" || marker === "SP") state.selectedMarkers.set(off, marker);
       }
     } else {
       const oldMarkers = saved.selectedMarkers || {};
-      const base = saved.baseDate || tIso;
+      const base = saved.baseDate || futureBase;
       for (const [k, mk] of Object.entries(oldMarkers)) {
-        const off = diffDaysIso(tIso, dateAddIso(base, Number(k)));
+        const off = diffDaysIso(futureBase, dateAddIso(base, Number(k)));
         if (!Number.isFinite(off) || off < 0) continue;
         const marker = String(mk || "").toUpperCase();
-        if (marker === "BD" || marker === "PD") state.selectedMarkers.set(off, marker);
+        if (marker === "BD" || marker === "PD" || marker === "PC" || marker === "SP") state.selectedMarkers.set(off, marker);
       }
     }
     state.recommendedOffsets = new Set(saved.recommendedOffsets || []);
@@ -1631,34 +2215,43 @@
 
   function migrateFutureToHistoryAllProducts() {
     const tIso = todayIso();
+    const futureBase = futureBaseIso();
     for (const [key, sim] of state.productSim.entries()) {
       const rec = state.recordsByProduct.get(key);
       if (!rec) continue;
       let dates = Array.isArray(sim.selectedDates) ? sim.selectedDates.filter(Boolean) : [];
       if (!dates.length) {
-        const base = sim.baseDate || tIso;
+        const base = sim.baseDate || futureBase;
         dates = (sim.selectedOffsets || []).map((off) => dateAddIso(base, Number(off)));
       }
       const nextFuture = [];
       const markerDates = sim.selectedMarkerDates || {};
       const nextMarkerDates = {};
+      if (!rec.meta || typeof rec.meta !== "object") rec.meta = {};
+      const historyMarkerDates = (rec.meta.historyMarkerDates && typeof rec.meta.historyMarkerDates === "object")
+        ? rec.meta.historyMarkerDates
+        : {};
       for (const ds of dates) {
-        if (ds < tIso) rec.dates.add(ds);
+        if (ds <= tIso) {
+          rec.dates.add(ds);
+          historyMarkerDates[ds] = normalizePromoMarker(markerDates[ds]) || "PD";
+        }
         else {
           nextFuture.push(ds);
           if (markerDates[ds]) nextMarkerDates[ds] = markerDates[ds];
         }
       }
+      rec.meta.historyMarkerDates = historyMarkerDates;
       sim.selectedDates = nextFuture.sort();
       sim.selectedMarkerDates = nextMarkerDates;
-      sim.baseDate = tIso;
+      sim.baseDate = futureBase;
       sim.selectedOffsets = sim.selectedDates
-        .map((ds) => diffDaysIso(tIso, ds))
+        .map((ds) => diffDaysIso(futureBase, ds))
         .filter((x) => Number.isFinite(x) && x >= 0)
         .sort((a, b) => a - b);
       const nextMarkers = {};
       for (const ds of sim.selectedDates) {
-        const off = diffDaysIso(tIso, ds);
+        const off = diffDaysIso(futureBase, ds);
         if (Number.isFinite(off) && off >= 0 && nextMarkerDates[ds]) {
           nextMarkers[String(off)] = nextMarkerDates[ds];
         }
@@ -1700,6 +2293,305 @@
     return null;
   }
 
+  function normalizePromoMarker(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (raw.includes("未选")) return "NS";
+    if (raw.includes("大促")) return "SP";
+    const compact = raw.toLowerCase().replace(/[^a-z]/g, "");
+    if (compact === "ns" || compact === "unselected" || compact === "notselected") return "NS";
+    if (compact === "pd" || compact === "ped" || compact === "discount") return "PD";
+    if (compact === "bd") return "BD";
+    if (compact === "pc" || compact === "pp" || compact === "coupon") return "PC";
+    if (compact === "sp" || compact === "majorpromo" || compact === "bigpromo") return "SP";
+    return "";
+  }
+
+  function getSheetCellValue(sheet, rowIndex, colIndex) {
+    const addr = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+    const cell = sheet?.[addr];
+    if (!cell) return null;
+    if (cell.v != null) return cell.v;
+    if (cell.w != null) return cell.w;
+    return null;
+  }
+
+  function getMergedHeaderValue(sheet, rowIndex, colIndex) {
+    const merges = Array.isArray(sheet?.["!merges"]) ? sheet["!merges"] : [];
+    for (const merge of merges) {
+      if (rowIndex >= merge.s.r && rowIndex <= merge.e.r && colIndex >= merge.s.c && colIndex <= merge.e.c) {
+        return getSheetCellValue(sheet, merge.s.r, merge.s.c);
+      }
+    }
+    return getSheetCellValue(sheet, rowIndex, colIndex);
+  }
+
+  function expandPromoRangesToMarkerMap(ranges) {
+    const out = {};
+    for (const item of ranges) {
+      const start = item?.start;
+      const end = item?.end;
+      const marker = normalizePromoMarker(item?.marker) || "PD";
+      if (!start || !end || start > end) continue;
+      let cur = new Date(start);
+      while (cur <= end) {
+        out[fmtDate(cur)] = marker;
+        cur = addDays(cur, 1);
+      }
+    }
+    return out;
+  }
+
+  function splitDateMarkersByToday(dateMarkers) {
+    const today = todayIso();
+    const historyDates = [];
+    const historyMarkerDates = {};
+    const futureDates = [];
+    const futureMarkerDates = {};
+    for (const ds of Object.keys(dateMarkers || {}).sort()) {
+      const marker = normalizePromoMarker(dateMarkers[ds]) || "PD";
+      if (ds <= today) {
+        historyDates.push(ds);
+        historyMarkerDates[ds] = marker;
+      } else {
+        futureDates.push(ds);
+        futureMarkerDates[ds] = marker;
+      }
+    }
+    return { historyDates, historyMarkerDates, futureDates, futureMarkerDates };
+  }
+
+  function parseLegacyPromoRanges(row) {
+    const entries = Object.entries(row);
+    const ranges = [];
+    for (let i = 0; i < entries.length; i++) {
+      const [key, val] = entries[i];
+      if (typeof key === "string" && key.startsWith("促销")) {
+        const next = entries[i + 1] ? entries[i + 1][1] : null;
+        const start = parseDateSafe(val);
+        const end = parseDateSafe(next);
+        if (!start || !end || start > end) continue;
+        ranges.push({ marker: "PD", start, end });
+      }
+    }
+    return ranges;
+  }
+
+  function getTemplateConfigFromWorkbook(wb, sheetName = wb.SheetNames[0]) {
+    const sheet = wb.Sheets[sheetName];
+    const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
+    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
+    const headerRow = Array.isArray(aoa[0]) ? aoa[0] : [];
+    const mergeHeaderMap = {};
+    for (const merge of Array.isArray(sheet["!merges"]) ? sheet["!merges"] : []) {
+      if (merge.s.r !== 0) continue;
+      const mergedValue = headerRow[merge.s.c];
+      for (let col = merge.s.c; col <= merge.e.c; col++) {
+        mergeHeaderMap[col] = mergedValue;
+      }
+    }
+    const metaHeaders = [
+      String(headerRow[0] || "SKU"),
+      String(headerRow[1] || "ASIN"),
+      String(headerRow[2] || "父ASIN"),
+      String(headerRow[3] || "品名"),
+    ];
+    const promoSlots = [];
+    for (let col = 4; col <= range.e.c; col += 2) {
+      const rawHeader = mergeHeaderMap[col] ?? headerRow[col] ?? getMergedHeaderValue(sheet, 0, col);
+      const marker = normalizePromoMarker(rawHeader)
+        || "PD";
+      const hasSlotData = String(rawHeader || "").trim()
+        || aoa.slice(1).some((row) => {
+          const cells = Array.isArray(row) ? row : [];
+          return parseDateSafe(cells[col]) || parseDateSafe(cells[col + 1]);
+        });
+      if (!hasSlotData) continue;
+      promoSlots.push({
+        marker,
+        title: String(rawHeader || displayMarker(marker) || "").trim() || displayMarker(marker),
+      });
+    }
+    return {
+      metaHeaders,
+      promoSlots,
+      cols: Array.isArray(sheet["!cols"]) ? sheet["!cols"] : [],
+    };
+  }
+
+  function getRowSpecificPromoColumns(headerRow, maxCol) {
+    const groups = [];
+    for (let col = 4; col <= maxCol; col += 3) {
+      const titleHeader = String(headerRow[col] || "").trim();
+      const startHeader = String(headerRow[col + 1] || "").trim();
+      const endHeader = String(headerRow[col + 2] || "").trim();
+      if (!titleHeader && !startHeader && !endHeader) continue;
+      const isTypeHeader = /类型|标题|type/i.test(titleHeader);
+      const isStartHeader = /开始|start/i.test(startHeader);
+      const isEndHeader = /结束|end/i.test(endHeader);
+      if (!isTypeHeader || !isStartHeader || !isEndHeader) continue;
+      groups.push({
+        titleCol: col,
+        startCol: col + 1,
+        endCol: col + 2,
+      });
+    }
+    return groups;
+  }
+
+  function parseWorkbookProducts(wb) {
+    const sheetName = wb.SheetNames[0];
+    const sheet = wb.Sheets[sheetName];
+    const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
+    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
+    const headerRow = Array.isArray(aoa[0]) ? aoa[0] : [];
+    const rowSpecificPromoColumns = getRowSpecificPromoColumns(headerRow, range.e.c);
+    if (rowSpecificPromoColumns.length) {
+      const map = new Map();
+      for (let rowIndex = 1; rowIndex < aoa.length; rowIndex++) {
+        const row = Array.isArray(aoa[rowIndex]) ? aoa[rowIndex] : [];
+        const sku = String(row[0] || "").trim();
+        const asin = String(row[1] || "").trim();
+        if (!asin && !sku) continue;
+        const key = asin || sku;
+        const label = `${asin || "NO-ASIN"} | ${sku || "NO-SKU"}`;
+        const rowMeta = {
+          SKU: sku,
+          ASIN: asin,
+          "父ASIN": String(row[2] || "").trim(),
+          "品名": String(row[3] || "").trim(),
+        };
+        const ranges = [];
+        for (const group of rowSpecificPromoColumns) {
+          const marker = normalizePromoMarker(row[group.titleCol]);
+          const start = parseDateSafe(row[group.startCol]);
+          const end = parseDateSafe(row[group.endCol]);
+          if (!marker || !start || !end || start > end) continue;
+          if (marker === "NS") continue;
+          ranges.push({ marker, start, end });
+        }
+        const dateMarkers = expandPromoRangesToMarkerMap(ranges);
+        const split = splitDateMarkersByToday(dateMarkers);
+        const futureOffsets = split.futureDates
+          .map((ds) => diffDaysIso(futureBaseIso(), ds))
+          .filter((x) => Number.isFinite(x) && x >= 0)
+          .sort((a, b) => a - b);
+        map.set(key, {
+          label,
+          dates: new Set(split.historyDates),
+          meta: {
+            ...rowMeta,
+            historyMarkerDates: split.historyMarkerDates,
+          },
+          sim: {
+            selectedOffsets: futureOffsets,
+            selectedMarkers: Object.fromEntries(futureOffsets.map((off) => [String(off), split.futureMarkerDates[dateAddIso(futureBaseIso(), off)] || "PD"])),
+            selectedMarkerDates: split.futureMarkerDates,
+            recommendedOffsets: [],
+            selectedDates: split.futureDates,
+            baseDate: futureBaseIso(),
+          },
+        });
+      }
+      return { map, templateConfig: null };
+    }
+    const templateConfig = getTemplateConfigFromWorkbook(wb, sheetName);
+    const promoColumns = templateConfig.promoSlots.map((slot, idx) => ({
+      marker: slot.marker,
+      startCol: 4 + idx * 2,
+      endCol: Math.min(5 + idx * 2, range.e.c),
+    }));
+
+    const map = new Map();
+    if (promoColumns.length) {
+      console.info("promoColumns", promoColumns);
+      for (let rowIndex = 1; rowIndex < aoa.length; rowIndex++) {
+        const row = Array.isArray(aoa[rowIndex]) ? aoa[rowIndex] : [];
+        const sku = String(row[0] || "").trim();
+        const asin = String(row[1] || "").trim();
+        if (!asin && !sku) continue;
+        const key = asin || sku;
+        const label = `${asin || "NO-ASIN"} | ${sku || "NO-SKU"}`;
+        const rowMeta = {
+          SKU: sku,
+          ASIN: asin,
+          "父ASIN": String(row[2] || "").trim(),
+          "品名": String(row[3] || "").trim(),
+        };
+        const ranges = [];
+        for (const group of promoColumns) {
+          const start = parseDateSafe(row[group.startCol]);
+          const end = parseDateSafe(row[group.endCol]);
+          if (!start || !end || start > end) continue;
+          ranges.push({ marker: group.marker, start, end });
+        }
+        const dateMarkers = expandPromoRangesToMarkerMap(ranges);
+        const split = splitDateMarkersByToday(dateMarkers);
+        const futureOffsets = split.futureDates
+          .map((ds) => diffDaysIso(futureBaseIso(), ds))
+          .filter((x) => Number.isFinite(x) && x >= 0)
+          .sort((a, b) => a - b);
+        map.set(key, {
+          label,
+          dates: new Set(split.historyDates),
+          meta: {
+            ...rowMeta,
+            historyMarkerDates: split.historyMarkerDates,
+          },
+          sim: {
+            selectedOffsets: futureOffsets,
+            selectedMarkers: Object.fromEntries(futureOffsets.map((off) => [String(off), split.futureMarkerDates[dateAddIso(futureBaseIso(), off)] || "PD"])),
+            selectedMarkerDates: split.futureMarkerDates,
+            recommendedOffsets: [],
+            selectedDates: split.futureDates,
+            baseDate: futureBaseIso(),
+          },
+        });
+        console.info("parsedProduct", key, {
+          historyCount: split.historyDates.length,
+          futureCount: split.futureDates.length,
+          markers: Array.from(new Set(Object.values(dateMarkers))),
+        });
+      }
+      return { map, templateConfig };
+    }
+
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+    for (const row of rows) {
+      const asin = String(row["ASIN"] || "").trim();
+      const sku = String(row["SKU"] || "").trim();
+      if (!asin && !sku) continue;
+      const key = asin || sku;
+      const label = `${asin || "NO-ASIN"} | ${sku || "NO-SKU"}`;
+      const dateMarkers = expandPromoRangesToMarkerMap(parseLegacyPromoRanges(row));
+      const split = splitDateMarkersByToday(dateMarkers);
+      const futureOffsets = split.futureDates
+        .map((ds) => diffDaysIso(futureBaseIso(), ds))
+        .filter((x) => Number.isFinite(x) && x >= 0)
+        .sort((a, b) => a - b);
+      map.set(key, {
+        label,
+        dates: new Set(split.historyDates),
+        meta: {
+          SKU: row["SKU"] || "",
+          ASIN: row["ASIN"] || "",
+          "父ASIN": row["父ASIN"] || "",
+          "品名": row["品名"] || "",
+          historyMarkerDates: split.historyMarkerDates,
+        },
+        sim: {
+          selectedOffsets: futureOffsets,
+          selectedMarkers: Object.fromEntries(futureOffsets.map((off) => [String(off), split.futureMarkerDates[dateAddIso(futureBaseIso(), off)] || "PD"])),
+          selectedMarkerDates: split.futureMarkerDates,
+          recommendedOffsets: [],
+          selectedDates: split.futureDates,
+          baseDate: futureBaseIso(),
+        },
+      });
+    }
+    return { map, templateConfig };
+  }
+
   function addDays(base, delta) {
     const d = new Date(base);
     d.setDate(d.getDate() + delta);
@@ -1722,10 +2614,12 @@
   function renderHistoryPanel() {
     const product = state.recordsByProduct.get(state.selectedKey);
     const sheetDates = sortIsoDates(Array.from(product?.dates || []));
-    // 当前口径：历史记录来自导入表格中的历史日期。
     const historyDates = sheetDates;
     historyCalendar.innerHTML = "";
     const historySet = new Set(historyDates);
+    const historyMarkerDates = (product?.meta && typeof product.meta.historyMarkerDates === "object" && product.meta.historyMarkerDates)
+      ? product.meta.historyMarkerDates
+      : {};
     const today = new Date();
     const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const startDate = new Date(endDate);
@@ -1748,18 +2642,35 @@
       d.setDate(d.getDate() + i);
       const iso = fmtDate(d);
       const selected = historySet.has(iso);
+      const marker = normalizePromoMarker(historyMarkerDates[iso]) || "PD";
       const card = document.createElement("button");
       card.type = "button";
       card.className = "day";
       if (selected) card.classList.add("selected");
-      card.innerHTML = `<div class="date"><span class="date-main">${iso}</span><span class="date-offset">H-${89 - i}</span></div><div class="tag">${selected ? "已选" : "未选"}</div><div class="meta">来源: 表格/历史</div><div class="meta">点击可切换</div>`;
+      if (selected) card.classList.add(`marker-${String(marker).toLowerCase()}`);
+      card.innerHTML = `<div class="date"><span class="date-main">${iso}</span><span class="date-offset">H-${89 - i}</span></div><div class="tag">${selected ? displayMarker(marker) : "未选"}</div><div class="meta">来源: 历史90天</div><div class="meta">点击可切换</div>`;
       card.onclick = async () => {
         const p = state.recordsByProduct.get(state.selectedKey);
         if (!p) return;
-        if (p.dates.has(iso)) p.dates.delete(iso);
-        else p.dates.add(iso);
+        if (!p.meta || typeof p.meta !== "object") p.meta = {};
+        const markerMap = (p.meta.historyMarkerDates && typeof p.meta.historyMarkerDates === "object")
+          ? p.meta.historyMarkerDates
+          : {};
+        const mode = state.markerMode || "PD";
+        const currentMarker = normalizePromoMarker(markerMap[iso]) || "PD";
+        if (p.dates.has(iso)) {
+          if (currentMarker === mode) {
+            p.dates.delete(iso);
+            delete markerMap[iso];
+          } else {
+            markerMap[iso] = mode;
+          }
+        } else {
+          p.dates.add(iso);
+          markerMap[iso] = mode;
+        }
+        p.meta.historyMarkerDates = markerMap;
         renderHistoryPanel();
-        await saveSharedStateToServer();
         await recalc({ recommend: false });
       };
       historyCalendar.appendChild(card);
@@ -1802,11 +2713,15 @@
     pageTabCalculator.classList.toggle("active", page === "calculator");
     pageTabMonitor.classList.toggle("active", page === "monitor");
     markerFloat.style.display = page === "calculator" ? "flex" : "none";
+    skuSwitchFloat.style.display = page === "calculator" && state.recordsByProduct.size ? "flex" : "none";
     try {
       localStorage.setItem("app_active_page_v1", page);
     } catch (_) {}
     if (page === "calculator") {
       updateMarkerFloatPosition();
+      updateSkuSwitchPosition();
+    } else {
+      syncAsinMonitorProgressOnce({ startPollingIfRunning: true }).catch(() => {});
     }
     requestAnimationFrame(syncMonitorStickyHeader);
   }
@@ -1852,28 +2767,40 @@
   function getAsinMonitorAvailableDates(rows) {
     return Array.from(new Set(getVisibleAsinMonitorRows(rows).map(row => String(row.fetch_date || "")).filter(Boolean))).sort();
   }
+  function normalizeAsinMonitorSelectedDate(dates, selected) {
+    if (!dates.length) return "";
+    if (selected && dates.includes(selected)) return selected;
+    const today = todayIso();
+    if (!selected && dates.includes(today)) return today;
+    const target = selected || today;
+    let fallback = dates[dates.length - 1];
+    for (const ds of dates) {
+      if (ds <= target) fallback = ds;
+      if (ds >= target) {
+        fallback = ds;
+        break;
+      }
+    }
+    return fallback;
+  }
   function updateAsinMonitorDateControls(rows) {
     const visibleRows = getVisibleAsinMonitorRows(rows);
     const dates = getAsinMonitorAvailableDates(visibleRows);
-    const today = todayIso();
     if (!dates.length) {
       asinMonitorSelectedDate = "";
-      asinMonitorDateSelect.innerHTML = "";
+      asinMonitorDateSelect.value = "";
+      asinMonitorDateSelect.removeAttribute("min");
+      asinMonitorDateSelect.removeAttribute("max");
+      asinMonitorDateSelect.disabled = true;
       asinMonitorDateLabel.textContent = "当前无可显示日期。";
       asinMonitorPrevDateBtn.disabled = true;
       asinMonitorNextDateBtn.disabled = true;
       return;
     }
-    if (!asinMonitorSelectedDate || !dates.includes(asinMonitorSelectedDate)) {
-      asinMonitorSelectedDate = dates.includes(today) ? today : dates[dates.length - 1];
-    }
-    asinMonitorDateSelect.innerHTML = "";
-    for (const ds of dates) {
-      const op = document.createElement("option");
-      op.value = ds;
-      op.textContent = ds;
-      asinMonitorDateSelect.appendChild(op);
-    }
+    asinMonitorSelectedDate = normalizeAsinMonitorSelectedDate(dates, asinMonitorSelectedDate);
+    asinMonitorDateSelect.disabled = false;
+    asinMonitorDateSelect.min = dates[0];
+    asinMonitorDateSelect.max = dates[dates.length - 1];
     asinMonitorDateSelect.value = asinMonitorSelectedDate;
     const idx = dates.indexOf(asinMonitorSelectedDate);
     asinMonitorPrevDateBtn.disabled = idx <= 0;
@@ -2050,7 +2977,7 @@
     asinMonitorRetryDelay.value = String(data.retry_delay_seconds ?? 20);
     updateAsinMonitorSummary(data);
     renderAsinMonitorResults(asinMonitorAllRows);
-    const scheduleText = `已加载配置：${data.enabled ? "自动执行已启用" : "自动执行已停用"}，每天 ${String(data.run_hour ?? 9).padStart(2, "0")}:${String(data.run_minute ?? 0).padStart(2, "0")} 抓取，模式 ${data.headless === false ? "可见窗口" : "无头"}，最近运行 ${data.last_run_at || "无"}`;
+    const scheduleText = `已加载配置：${data.enabled ? "自动执行已启用" : "自动执行已停用"}，每天 ${String(data.run_hour ?? 9).padStart(2, "0")}:${String(data.run_minute ?? 0).padStart(2, "0")}（北京时间）抓取，模式 ${data.headless === false ? "可见窗口" : "无头"}，最近运行 ${data.last_run_at || "无"}`;
     setAsinMonitorStatus(scheduleText);
   }
   async function saveAsinMonitorConfig() {
@@ -2082,7 +3009,7 @@
   async function refreshAsinMonitorResults() {
     setAsinMonitorResultsLoading(true);
     try {
-      const resp = await fetch(`${API_BASE}/api/asin-monitor/results?limit=1000`);
+      const resp = await fetch(`${API_BASE}/api/asin-monitor/results?limit=5000`);
       const data = await parseApiResponse(resp);
       if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
       renderAsinMonitorResults(data.results || []);
@@ -2092,6 +3019,52 @@
   }
   function openAsinMonitorModal() { asinMonitorModal.classList.add("show"); }
   function closeAsinMonitorModal() { asinMonitorModal.classList.remove("show"); }
+  function closeStrategyModal(result = null) {
+    strategyModal.classList.remove("show");
+    const resolve = strategyModalState.resolve;
+    strategyModalState.resolve = null;
+    if (resolve) resolve(result);
+  }
+  function openStrategyModal(options = {}) {
+    const {
+      mode = "save",
+      title = "保存策略",
+      subtitle = "把当前 ASIN 的未来模拟沉淀成可复用策略。",
+      note = "保存后可以在其他 ASIN 上直接复用这套未来排期。",
+      confirmText = "确定",
+      defaultValue = "",
+      danger = false,
+      showInput = true,
+      inputLabel = "策略名称",
+      inputPlaceholder = "例如：Prime Day 前后拉满",
+      kicker = mode === "delete" ? "删除确认" : "策略操作",
+    } = options;
+    strategyModalState.mode = mode;
+    strategyModalKicker.textContent = kicker;
+    strategyModalTitle.textContent = title;
+    strategyModalSubtitle.textContent = subtitle;
+    strategyModalNote.textContent = note;
+    strategyModalField.style.display = showInput ? "" : "none";
+    strategyNameInput.value = defaultValue || "";
+    strategyNameInput.placeholder = inputPlaceholder;
+    const labelEl = strategyModalField ? strategyModalField.querySelector(".strategy-modal-label") : null;
+    if (labelEl) labelEl.textContent = inputLabel;
+    confirmStrategyModalBtn.textContent = confirmText;
+    confirmStrategyModalBtn.classList.toggle("danger", !!danger);
+    confirmStrategyModalBtn.classList.toggle("primary", !danger);
+    strategyModal.classList.add("show");
+    window.requestAnimationFrame(() => {
+      if (showInput) {
+        strategyNameInput.focus();
+        strategyNameInput.select();
+      } else {
+        confirmStrategyModalBtn.focus();
+      }
+    });
+    return new Promise((resolve) => {
+      strategyModalState.resolve = resolve;
+    });
+  }
   function syncAsinMonitorAdvancedFields() {
     asinMonitorAdvancedFields.classList.toggle("show", !!asinMonitorAdvancedDetails?.open);
   }
@@ -2433,35 +3406,6 @@
     });
   }
 
-  function parsePromoRanges(row) {
-    const entries = Object.entries(row);
-    const ranges = [];
-    for (let i = 0; i < entries.length; i++) {
-      const [key, val] = entries[i];
-      if (typeof key === "string" && key.startsWith("促销")) {
-        const next = entries[i + 1] ? entries[i + 1][1] : null;
-        const start = parseDateSafe(val);
-        const end = parseDateSafe(next);
-        if (!start || !end) continue;
-        if (start > end) continue;
-        ranges.push([start, end]);
-      }
-    }
-    return ranges;
-  }
-
-  function expandRangesToSet(ranges) {
-    const s = new Set();
-    for (const [start, end] of ranges) {
-      let cur = new Date(start);
-      while (cur <= end) {
-        s.add(fmtDate(cur));
-        cur = addDays(cur, 1);
-      }
-    }
-    return s;
-  }
-
   async function recalc({ recommend = false } = {}) {
     const F = Number(futureDaysInput.value);
     if (!Number.isFinite(F) || F < 1 || !Number.isInteger(F)) {
@@ -2495,11 +3439,16 @@
     try {
       const product = state.recordsByProduct.get(state.selectedKey);
       const historyDates = Array.from(product?.dates || []);
+      const historyMarkerDates = (product?.meta && typeof product.meta.historyMarkerDates === "object" && product.meta.historyMarkerDates)
+        ? product.meta.historyMarkerDates
+        : {};
       const payload = {
         history_dates: historyDates,
+        history_marker_dates: historyMarkerDates,
         future_days: F,
         selected_offsets: Array.from(state.selectedOffsets).sort((a, b) => a - b),
         marker_overrides: markerMapToObject(state.selectedMarkers),
+        marker_mode: state.markerMode || "PD",
         mode,
         preferred_start: preferredStart,
         preferred_end: preferredEnd,
@@ -2520,19 +3469,18 @@
       const nextMarkers = new Map();
       for (const off of state.selectedOffsets) {
         const keep = String(state.selectedMarkers.get(Number(off)) || "").toUpperCase();
-        if (keep === "BD" || keep === "PD") {
+        if (keep === "BD" || keep === "PD" || keep === "PC" || keep === "SP") {
           nextMarkers.set(Number(off), keep);
           continue;
         }
         const row = state.dayRows.find((x) => Number(x.offset) === Number(off));
         const marker = String(row?.marker || "").toUpperCase();
-        if (marker === "BD" || marker === "PD") nextMarkers.set(Number(off), marker);
+        if (marker === "BD" || marker === "PD" || marker === "PC" || marker === "SP") nextMarkers.set(Number(off), marker);
         else nextMarkers.set(Number(off), "PD");
       }
       state.selectedMarkers = nextMarkers;
       state.recommendedOffsets = new Set(data.recommended_offsets || []);
       saveCurrentProductState();
-      try { await saveSharedStateToServer(); } catch (_) {}
       violationText.textContent = data.message || "";
       renderCalendar();
       renderHistoryPanel();
@@ -2564,31 +3512,38 @@
       btn.className = "day";
       const localMarker = row.selected ? (state.selectedMarkers.get(Number(row.offset)) || row.marker || "PD") : "";
       if (row.selected) btn.classList.add("selected");
-      if (row.marker) {
-        const markerClass = row.selected ? localMarker : row.marker;
-        btn.classList.add(`marker-${String(markerClass).toLowerCase()}`);
+      if (row.selected && localMarker) {
+        btn.classList.add(`marker-${String(localMarker).toLowerCase()}`);
       }
       if (row.recommended) btn.classList.add("recommended");
       if (row.violation) btn.classList.add("violation");
       if (!row.selected && !row.available) btn.classList.add("disabled");
       const tag = row.violation
         ? "冲突"
-        : row.marker
-        ? displayMarker(row.selected ? localMarker : row.marker)
         : !row.selected && !row.available
         ? "不可选"
         : row.selected
-        ? "PED"
+        ? displayMarker(localMarker || "PD")
         : "未选";
-      btn.innerHTML = `<div class="date"><span class="date-main">${row.date}</span><span class="date-offset">D+${row.offset}</span></div><div class="tag">${tag}</div><div class="meta">前90天: ${row.past90_count}/44</div><div class="meta">选后余量: ${row.remaining_after_select} 天</div>`;
+      btn.innerHTML = `<div class="date"><span class="date-main">${row.date}</span><span class="date-offset">D+${row.offset + 1}</span></div><div class="tag">${tag}</div><div class="meta">前90天: ${row.past90_count}/44</div><div class="meta">选后余量: ${row.remaining_after_select} 天</div>`;
       btn.onclick = async () => {
         if (state.loading) return;
         const mode = state.markerMode || "PD";
-        if (mode === "PC") {
-          state.selectedOffsets.delete(row.offset);
-          state.selectedMarkers.delete(row.offset);
+        if (row.selected) {
+          if (row.violation) {
+            state.selectedOffsets.delete(row.offset);
+            state.selectedMarkers.delete(row.offset);
+          } else {
+          const currentMarker = String(localMarker || "PD").toUpperCase();
+            if (currentMarker === mode) {
+              state.selectedOffsets.delete(row.offset);
+              state.selectedMarkers.delete(row.offset);
+            } else {
+              state.selectedOffsets.add(row.offset);
+              state.selectedMarkers.set(row.offset, mode);
+            }
+          }
         } else {
-          if (!row.selected && !row.available) return;
           state.selectedOffsets.add(row.offset);
           state.selectedMarkers.set(row.offset, mode);
         }
@@ -2599,16 +3554,28 @@
     updateMarkerFloatPosition();
   }
 
-  fileBtn.addEventListener("click", () => fileInput.click());
+  fileBtn.addEventListener("click", () => {
+    if (state.importing || state.initializing) return;
+    fileInput.click();
+  });
   fileName.addEventListener("click", async () => {
     if (!state.importedFileName) return;
     try {
-      const resp = await fetch(`${API_BASE}/api/source-file`, { method: "HEAD" });
+      if (state.pendingImportFile) {
+        const url = URL.createObjectURL(state.pendingImportFile);
+        window.open(url, "_blank");
+        window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return;
+      }
+      const resp = await fetch(apiUrl("/api/source-file"), {
+        method: "HEAD",
+        headers: apiHeaders(),
+      });
       if (!resp.ok) {
         setError("服务器上未找到源文件，请重新导入一次。");
         return;
       }
-      window.open(`${API_BASE}/api/source-file`, "_blank");
+      window.open(apiUrl("/api/source-file"), "_blank");
     } catch (_) {
       setError("下载源文件失败，请检查服务器连接。");
     }
@@ -2616,43 +3583,22 @@
 
   fileInput.addEventListener("change", async (e) => {
     clearError();
+    if (state.importing) return;
     const file = e.target.files?.[0];
     if (!file) return;
     fileName.textContent = file.name;
     state.importedFileName = file.name;
+    setImportLoading(true);
 
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      await fetch(`${API_BASE}/api/upload-source`, { method: "POST", body: fd });
-
       const wb = await readWorkbook(file);
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
-      const map = new Map();
-
-      for (const row of rows) {
-        const asin = String(row["ASIN"] || "").trim();
-        const sku = String(row["SKU"] || "").trim();
-        if (!asin && !sku) continue;
-        const key = asin || sku;
-        const label = `${asin || "NO-ASIN"} | ${sku || "NO-SKU"}`;
-        const ranges = parsePromoRanges(row);
-        const expanded = expandRangesToSet(ranges);
-        map.set(key, {
-          label,
-          dates: expanded,
-          meta: {
-            SKU: row["SKU"] || "",
-            ASIN: row["ASIN"] || "",
-            "父ASIN": row["父ASIN"] || "",
-            "品名": row["品名"] || ""
-          }
-        });
-      }
+      const parsedWorkbook = parseWorkbookProducts(wb);
+      const map = parsedWorkbook.map;
+      state.importTemplateConfig = parsedWorkbook.templateConfig;
+      state.pendingImportFile = file;
 
       if (map.size === 0) {
-        setError("未在文件中识别到有效商品记录（需要 ASIN 或 SKU）。");
+        setError("未在文件中识别到有效商品记录或促销字段。");
         return;
       }
 
@@ -2661,21 +3607,12 @@
       state.productSim.clear();
       productSelect.innerHTML = "";
       for (const [key, val] of map.entries()) {
-        state.recordsByProduct.set(key, val);
-        // 导入时把“今天及未来”的已有促销带入模拟
-        const importedOffsets = Array.from(val.dates)
-          .map((ds) => toOffsetFromToday(ds))
-          .filter((x) => Number.isFinite(x) && x >= 0)
-          .sort((a, b) => a - b);
-        state.productSim.set(key, {
-          selectedOffsets: importedOffsets,
-          selectedMarkers: Object.fromEntries(importedOffsets.map((off) => [String(off), "PD"])),
-          selectedMarkerDates: Object.fromEntries(importedOffsets.map((off) => [dateAddIso(todayIso(), off), "PD"])),
-          recommendedOffsets: []
-          ,
-          selectedDates: importedOffsets.map((off) => dateAddIso(todayIso(), off)),
-          baseDate: todayIso()
+        state.recordsByProduct.set(key, {
+          label: val.label,
+          dates: val.dates,
+          meta: val.meta,
         });
+        state.productSim.set(key, val.sim);
         const op = document.createElement("option");
         op.value = key;
         op.textContent = val.label;
@@ -2685,11 +3622,14 @@
       state.selectedKey = productSelect.value || map.keys().next().value || "";
       productSelect.value = state.selectedKey;
       loadProductState(state.selectedKey);
-      await saveSharedStateToServer();
       await recalc({ recommend: false });
       renderHistoryPanel();
+      renderSkuSwitchPanel();
     } catch (err) {
       setError(`导入失败：${err.message || err}`);
+    } finally {
+      setImportLoading(false);
+      fileInput.value = "";
     }
   });
 
@@ -2711,6 +3651,10 @@
   });
 
   futureDaysInput.addEventListener("change", async () => {
+    saveCurrentProductState();
+    if (state.selectedKey) {
+      loadProductState(state.selectedKey);
+    }
     await recalc({ recommend: false });
   });
 
@@ -2721,6 +3665,7 @@
     loadProductState(state.selectedKey);
     await recalc({ recommend: false });
     renderHistoryPanel();
+    renderSkuSwitchPanel();
   });
 
   markerPdBtn.addEventListener("click", () => {
@@ -2733,6 +3678,10 @@
   });
   markerPcBtn.addEventListener("click", () => {
     state.markerMode = "PC";
+    renderMarkerModeButtons();
+  });
+  markerSpBtn.addEventListener("click", () => {
+    state.markerMode = "SP";
     renderMarkerModeButtons();
   });
 
@@ -2750,133 +3699,296 @@
       markerMode: state.markerMode,
       selectedKey: state.selectedKey,
       productSim: Array.from(state.productSim.entries()),
+      strategies: Array.from(state.strategies.entries()),
     };
     localStorage.setItem("discount_sim_state_v1", JSON.stringify(payload));
     violationText.textContent = "已保存当前模拟数据。";
-    saveSharedStateToServer().catch(() => {});
+    (async () => {
+      try {
+        if (state.pendingImportFile) {
+          const fd = new FormData();
+          fd.append("file", state.pendingImportFile);
+          await fetch(`${API_BASE}/api/upload-source`, {
+            method: "POST",
+            headers: apiHeaders(),
+            body: fd
+          });
+          state.pendingImportFile = null;
+        }
+        await saveSharedStateToServer();
+      } catch (err) {
+        setError(`保存失败：${err.message || err}`);
+      }
+    })();
   });
 
-  exportBtn.addEventListener("click", () => {
+  saveStrategyBtn.addEventListener("click", async () => {
+    if (!state.selectedKey) {
+      setError("请先导入文件并选择商品。");
+      return;
+    }
+    const name = await openStrategyModal({
+      mode: "save",
+      title: "保存当前策略",
+      subtitle: "把这套未来模拟命名保存，之后在别的 ASIN 上可以一键套用。",
+      note: "策略会保存未来日期偏移和标签类型，不会覆盖历史记录。",
+      confirmText: "保存策略",
+      defaultValue: strategySelect.value || "",
+      inputPlaceholder: "例如：暑期均匀排期",
+    });
+    const trimmed = String(name || "").trim();
+    if (!trimmed) return;
+    const payload = getCurrentStrategyPayload();
+    if (!payload) {
+      setError("当前没有可保存的模拟策略。");
+      return;
+    }
+    state.strategies.set(trimmed, payload);
+    renderStrategyOptions();
+    strategySelect.value = trimmed;
+    violationText.textContent = `已保存策略：${trimmed}`;
+    try {
+      await saveSharedStateToServer();
+    } catch (err) {
+      setError(`保存策略失败：${err.message || err}`);
+    }
+  });
+
+  applyStrategyBtn.addEventListener("click", async () => {
+    const name = String(strategySelect.value || "").trim();
+    if (!name) {
+      setError("请先选择一个策略。");
+      return;
+    }
+    if (!state.selectedKey) {
+      setError("请先选择一个商品。");
+      return;
+    }
+    if (!applyStrategyToCurrentProduct(name)) {
+      setError("应用策略失败，所选策略不存在。");
+      return;
+    }
+    await recalc({ recommend: false });
+    violationText.textContent = `已应用策略：${name}`;
+    try {
+      await saveSharedStateToServer();
+    } catch (err) {
+      setError(`应用策略后保存失败：${err.message || err}`);
+    }
+  });
+
+  deleteStrategyBtn.addEventListener("click", async () => {
+    const name = String(strategySelect.value || "").trim();
+    if (!name) {
+      setError("请先选择要删除的策略。");
+      return;
+    }
+    const confirmed = await openStrategyModal({
+      mode: "delete",
+      title: "删除这个策略？",
+      subtitle: `策略「${name}」删除后无法恢复，但不会影响已经应用到各个 ASIN 的模拟结果。`,
+      note: "如果只是暂时不用，可以保留策略，之后仍能继续复用。",
+      confirmText: "确认删除",
+      danger: true,
+      showInput: false,
+      kicker: "删除确认",
+    });
+    if (!confirmed) return;
+    state.strategies.delete(name);
+    renderStrategyOptions();
+    violationText.textContent = `已删除策略：${name}`;
+    try {
+      await saveSharedStateToServer();
+    } catch (err) {
+      setError(`删除策略失败：${err.message || err}`);
+    }
+  });
+
+  function getSavedFutureDates(saved) {
+    const base = futureBaseIso();
+    let dates = Array.isArray(saved?.selectedDates) ? saved.selectedDates.filter(Boolean) : [];
+    if (!dates.length) {
+      const savedBase = saved?.baseDate || base;
+      dates = (saved?.selectedOffsets || []).map((off) => dateAddIso(savedBase, Number(off)));
+    }
+    return dates.filter((ds) => diffDaysIso(base, ds) >= 0).sort();
+  }
+
+  function getHistoryMarkerMap(product) {
+    const out = {};
+    const raw = (product?.meta && typeof product.meta.historyMarkerDates === "object" && product.meta.historyMarkerDates)
+      ? product.meta.historyMarkerDates
+      : {};
+    for (const ds of Array.from(product?.dates || []).sort()) {
+      out[ds] = normalizePromoMarker(raw[ds]) || "PD";
+    }
+    return out;
+  }
+
+  function getFutureMarkerMap(saved) {
+    const out = {};
+    const dateMarkers = (saved?.selectedMarkerDates && typeof saved.selectedMarkerDates === "object")
+      ? saved.selectedMarkerDates
+      : {};
+    for (const ds of getSavedFutureDates(saved)) {
+      out[ds] = normalizePromoMarker(dateMarkers[ds]) || "PD";
+    }
+    return out;
+  }
+
+  function getFutureExportMarkerMap(saved) {
+    const out = {};
+    const selectedMap = getFutureMarkerMap(saved);
+    const base = futureBaseIso();
+    const futureDays = Math.max(1, Number(futureDaysInput.value) || 90);
+    const visibleEnd = dateAddIso(base, futureDays - 1);
+    const savedDates = getSavedFutureDates(saved);
+    const lastSavedDate = savedDates.length ? savedDates[savedDates.length - 1] : "";
+    const exportEnd = lastSavedDate && lastSavedDate > visibleEnd ? lastSavedDate : visibleEnd;
+    for (let cursor = base; cursor <= exportEnd; cursor = dateAddIso(cursor, 1)) {
+      out[cursor] = selectedMap[cursor] || "NS";
+    }
+    return out;
+  }
+
+  function filterMarkerMapByDateRange(markerMap, startIso, endIso) {
+    const out = {};
+    for (const [ds, marker] of Object.entries(markerMap || {})) {
+      if (startIso && ds < startIso) continue;
+      if (endIso && ds > endIso) continue;
+      out[ds] = normalizePromoMarker(marker) || "PD";
+    }
+    return out;
+  }
+
+  function markerMapToRanges(markerMap) {
+    const entries = Object.entries(markerMap || {}).sort((a, b) => a[0].localeCompare(b[0]));
+    const ranges = [];
+    let current = null;
+    for (const [ds, rawMarker] of entries) {
+      const marker = normalizePromoMarker(rawMarker) || "PD";
+      if (!current) {
+        current = { marker, start: ds, end: ds };
+        continue;
+      }
+      const contiguous = diffDaysIso(current.end, ds) === 1;
+      if (current.marker === marker && contiguous) {
+        current.end = ds;
+      } else {
+        ranges.push(current);
+        current = { marker, start: ds, end: ds };
+      }
+    }
+    if (current) ranges.push(current);
+    return ranges;
+  }
+
+  function mergeMarkerMaps(...maps) {
+    const out = {};
+    for (const source of maps) {
+      for (const [ds, marker] of Object.entries(source || {})) {
+        out[ds] = normalizePromoMarker(marker) || "PD";
+      }
+    }
+    return out;
+  }
+
+  function buildTemplateScopeMarkerMap(product, saved, scope) {
+    const historyStartIso = dateAddIso(todayIso(), -89);
+    const historyEndIso = todayIso();
+    const historyMap = filterMarkerMapByDateRange(getHistoryMarkerMap(product), historyStartIso, historyEndIso);
+    const futureMap = getFutureExportMarkerMap(saved);
+    if (scope === "history") return historyMap;
+    if (scope === "future") return futureMap;
+    return mergeMarkerMaps(historyMap, futureMap);
+  }
+
+  function buildTemplateSheetConfig(scope, templateConfig) {
+    let neededCount = 0;
+    for (const [key, product] of state.recordsByProduct.entries()) {
+      const saved = state.productSim.get(key);
+      const ranges = markerMapToRanges(buildTemplateScopeMarkerMap(product, saved, scope));
+      neededCount = Math.max(neededCount, ranges.length);
+    }
+    return {
+      metaHeaders: ["SKU", "ASIN", "父ASIN", "品名"],
+      promoSlotCount: neededCount,
+      cols: [],
+    };
+  }
+
+  function buildTemplateAoaForScope(scope, templateConfig) {
+    const finalConfig = buildTemplateSheetConfig(scope, templateConfig);
+    const header = [...finalConfig.metaHeaders];
+    for (let i = 0; i < finalConfig.promoSlotCount; i++) {
+      header.push(`促销${i + 1}类型`, `促销${i + 1}开始`, `促销${i + 1}结束`);
+    }
+    const aoa = [header];
+    const rowEntries = [];
+    for (const [key, product] of state.recordsByProduct.entries()) {
+      const saved = state.productSim.get(key);
+      const markerMap = buildTemplateScopeMarkerMap(product, saved, scope);
+      const ranges = markerMapToRanges(markerMap).sort((a, b) => {
+        if (a.start !== b.start) return a.start.localeCompare(b.start);
+        if (a.end !== b.end) return a.end.localeCompare(b.end);
+        return String(a.marker || "").localeCompare(String(b.marker || ""));
+      });
+      const row = [
+        product.meta?.SKU || "",
+        product.meta?.ASIN || "",
+        product.meta?.["父ASIN"] || "",
+        product.meta?.["品名"] || "",
+      ];
+      for (let i = 0; i < finalConfig.promoSlotCount; i++) {
+        const range = ranges[i];
+        row.push(range ? displayMarker(range.marker) : "", range ? range.start : "", range ? range.end : "");
+      }
+      rowEntries.push({ key, ranges, row });
+      aoa.push(row);
+    }
+    return { aoa, config: finalConfig, rowEntries };
+  }
+
+  function buildTemplateSheet(scope, templateConfig) {
+    const built = buildTemplateAoaForScope(scope, templateConfig);
+    const ws = XLSX.utils.aoa_to_sheet(built.aoa);
+    if (built.config.cols.length) {
+      ws["!cols"] = built.config.cols.slice(0, 4 + built.config.promoSlotCount * 3);
+    }
+    return { ws, built };
+  }
+
+  async function loadFixedExportTemplateConfig() {
+    const resp = await fetch(`${API_BASE}/api/fixed-export-template`);
+    if (!resp.ok) {
+      throw new Error("未找到固定导出模板文件。");
+    }
+    const blob = await resp.blob();
+    const file = new File([blob], "fixed_export_template.xlsx", { type: blob.type || "application/octet-stream" });
+    const wb = await readWorkbook(file);
+    return getTemplateConfigFromWorkbook(wb);
+  }
+
+  exportBtn.addEventListener("click", async () => {
     if (state.recordsByProduct.size === 0) {
       setError("当前没有可导出的模拟数据。");
       return;
     }
     saveCurrentProductState();
-
-    function toMDY(iso) {
-      const [y, m, d] = iso.split("-").map(Number);
-      return `${m}/${d}/${y}`;
+    try {
+      const templateConfig = await loadFixedExportTemplateConfig();
+      const wb = XLSX.utils.book_new();
+      const totalSheet = buildTemplateSheet("all", templateConfig);
+      const historySheet = buildTemplateSheet("history", templateConfig);
+      const futureSheet = buildTemplateSheet("future", templateConfig);
+      XLSX.utils.book_append_sheet(wb, totalSheet.ws, "总表");
+      XLSX.utils.book_append_sheet(wb, historySheet.ws, "历史");
+      XLSX.utils.book_append_sheet(wb, futureSheet.ws, "未来");
+      const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 16);
+      XLSX.writeFile(wb, `促销记录_模拟导出_${ts}.xlsx`);
+    } catch (err) {
+      setError(`导出失败：${err.message || err}`);
     }
-    function offsetsToRanges(offsets, baseDate) {
-      const sorted = [...offsets].sort((a, b) => a - b);
-      if (sorted.length === 0) return [];
-      const ranges = [];
-      let start = sorted[0];
-      let prev = sorted[0];
-      for (let i = 1; i < sorted.length; i++) {
-        const cur = sorted[i];
-        if (cur === prev + 1) {
-          prev = cur;
-          continue;
-        }
-        ranges.push([start, prev]);
-        start = cur;
-        prev = cur;
-      }
-      ranges.push([start, prev]);
-      return ranges.map(([s, e]) => {
-        const ds = new Date(baseDate);
-        ds.setDate(ds.getDate() + s);
-        const de = new Date(baseDate);
-        de.setDate(de.getDate() + e);
-        const sIso = `${ds.getFullYear()}-${String(ds.getMonth() + 1).padStart(2, "0")}-${String(ds.getDate()).padStart(2, "0")}`;
-        const eIso = `${de.getFullYear()}-${String(de.getMonth() + 1).padStart(2, "0")}-${String(de.getDate()).padStart(2, "0")}`;
-        return [toMDY(sIso), toMDY(eIso)];
-      });
-    }
-
-    const baseDate = new Date();
-    const exportRows = [];
-    let maxPairCount = 0;
-
-    for (const [key, product] of state.recordsByProduct.entries()) {
-      const saved = state.productSim.get(key);
-      const offsets = saved?.selectedOffsets || [];
-      if (!offsets.length) continue;
-      const ranges = offsetsToRanges(offsets, baseDate);
-      if (ranges.length > maxPairCount) maxPairCount = ranges.length;
-      exportRows.push({ key, product, ranges });
-    }
-
-    if (exportRows.length === 0) {
-      setError("没有可导出的促销日期，请先在日历中选择促销日。");
-      return;
-    }
-
-    const cappedPairCount = Math.min(maxPairCount, 50); // 防止极端列数过大
-    const headers = ["SKU", "ASIN", "父ASIN", "品名"];
-    const startCols = [];
-    const endCols = [];
-    for (let i = 1; i <= cappedPairCount; i++) {
-      startCols.push(`促销${i}`);
-      endCols.push(`Unnamed: ${5 + (i - 1) * 2}`);
-      headers.push(startCols[i - 1], endCols[i - 1]);
-    }
-
-    const flatRows = [];
-    for (const item of exportRows) {
-      const { product, ranges } = item;
-      const row = {};
-      for (const h of headers) row[h] = "";
-      row["SKU"] = product.meta?.SKU || "";
-      row["ASIN"] = product.meta?.ASIN || "";
-      row["父ASIN"] = product.meta?.["父ASIN"] || "";
-      row["品名"] = product.meta?.["品名"] || "";
-      for (let i = 0; i < cappedPairCount; i++) {
-        const r = ranges[i];
-        row[startCols[i]] = r ? r[0] : "";
-        row[endCols[i]] = r ? r[1] : "";
-      }
-      flatRows.push(row);
-    }
-
-    const ws = XLSX.utils.json_to_sheet(flatRows, { header: headers });
-    // 标题合并：每组促销起止列做表头合并
-    ws["!merges"] = [];
-    for (let i = 0; i < cappedPairCount; i++) {
-      const c1 = 4 + i * 2;
-      const c2 = c1 + 1;
-      const addr2 = XLSX.utils.encode_cell({ r: 0, c: c2 });
-      ws[addr2] = { t: "s", v: "" };
-      ws["!merges"].push({ s: { r: 0, c: c1 }, e: { r: 0, c: c2 } });
-    }
-
-    // 合并视图：把每组 开始/结束 合并为一列，便于阅读
-    const mergedHeaders = ["SKU", "ASIN", "父ASIN", "品名"];
-    for (let i = 1; i <= cappedPairCount; i++) mergedHeaders.push(`促销${i}`);
-    const mergedRows = flatRows.map((r) => {
-      const out = {
-        "SKU": r["SKU"] || "",
-        "ASIN": r["ASIN"] || "",
-        "父ASIN": r["父ASIN"] || "",
-        "品名": r["品名"] || "",
-      };
-      for (let i = 1; i <= cappedPairCount; i++) {
-        const sCol = `促销${i}`;
-        const eCol = `Unnamed: ${5 + (i - 1) * 2}`;
-        const s = r[sCol] || "";
-        const e = r[eCol] || "";
-        out[sCol] = (s && e) ? `${s} ~ ${e}` : (s || e || "");
-      }
-      return out;
-    });
-    const wsMerged = XLSX.utils.json_to_sheet(mergedRows, { header: mergedHeaders });
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "模板格式");
-    XLSX.utils.book_append_sheet(wb, wsMerged, "合并视图");
-    const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 16);
-    XLSX.writeFile(wb, `促销记录_模拟导出_${ts}.xlsx`);
   });
 
   async function loadFeishuConfig() {
@@ -3089,6 +4201,24 @@
   openFeishuModalBtn.addEventListener("click", openFeishuModal);
   openFeishuModalBtn.addEventListener("click", autoLoadFeishuUsers);
   closeFeishuModalBtn.addEventListener("click", closeFeishuModal);
+  closeStrategyModalBtn.addEventListener("click", () => closeStrategyModal(null));
+  cancelStrategyModalBtn.addEventListener("click", () => closeStrategyModal(null));
+  confirmStrategyModalBtn.addEventListener("click", () => {
+    if (strategyModalState.mode === "delete") {
+      closeStrategyModal(true);
+      return;
+    }
+    closeStrategyModal(strategyNameInput.value);
+  });
+  strategyNameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      confirmStrategyModalBtn.click();
+    }
+  });
+  strategyModal.addEventListener("click", (e) => {
+    if (e.target === strategyModal) closeStrategyModal(null);
+  });
   feishuModal.addEventListener("click", (e) => {
     if (e.target === feishuModal) closeFeishuModal();
   });
@@ -3122,8 +4252,13 @@
   asinMonitorTrendModal.addEventListener("click", (e) => {
     if (e.target === asinMonitorTrendModal) closeAsinMonitorTrend();
   });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (strategyModal.classList.contains("show")) closeStrategyModal(null);
+  });
   asinMonitorDateSelect.addEventListener("change", () => {
-    asinMonitorSelectedDate = asinMonitorDateSelect.value || "";
+    const dates = getAsinMonitorAvailableDates(asinMonitorAllRows);
+    asinMonitorSelectedDate = normalizeAsinMonitorSelectedDate(dates, asinMonitorDateSelect.value || "");
     renderAsinMonitorResults(asinMonitorAllRows);
   });
   asinMonitorPskuFilter.addEventListener("change", () => {
@@ -3169,16 +4304,64 @@
     asinMonitorProgressBar.className = "progress-bar-fill indeterminate";
     asinMonitorProgressBar.style.width = "";
     asinMonitorProgressText.textContent = text || "处理中...";
+    asinMonitorProgressVisible = true;
   }
   function setProgressPercent(pct, text) {
+    asinMonitorProgressWrap.style.display = "block";
     asinMonitorProgressBar.className = "progress-bar-fill";
     asinMonitorProgressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
     if (text) asinMonitorProgressText.textContent = text;
+    asinMonitorProgressVisible = true;
   }
   function hideProgress() {
     asinMonitorProgressWrap.style.display = "none";
     asinMonitorProgressBar.className = "progress-bar-fill";
     asinMonitorProgressBar.style.width = "0%";
+    asinMonitorProgressText.textContent = "准备中...";
+    asinMonitorProgressVisible = false;
+  }
+  function stopAsinMonitorProgressPolling() {
+    if (!asinMonitorProgressPollTimer) return;
+    window.clearInterval(asinMonitorProgressPollTimer);
+    asinMonitorProgressPollTimer = null;
+  }
+  async function syncAsinMonitorProgressOnce(options = {}) {
+    const { startPollingIfRunning = false } = options;
+    try {
+      const resp = await fetch(`${API_BASE}/api/asin-monitor/progress`);
+      if (!resp.ok) return;
+      const p = await resp.json();
+      if (p.running) {
+        if (startPollingIfRunning) ensureAsinMonitorProgressPolling();
+        if (p.total > 0) {
+          const pct = Math.round((p.completed / p.total) * 100);
+          setProgressPercent(pct, p.status || `已完成 ${p.completed}/${p.total}`);
+        } else {
+          showProgress(p.status || "正在处理中...");
+        }
+        asinMonitorProgressRefreshPending = true;
+        return;
+      }
+      if (asinMonitorProgressRefreshPending) {
+        if (asinMonitorProgressVisible) {
+          setProgressPercent(100, "抓取完成！");
+          await new Promise((resolve) => setTimeout(resolve, 600));
+        }
+        await refreshAsinMonitorResults();
+        setAsinMonitorStatus("自动抓取已完成，结果已刷新。");
+        asinMonitorProgressRefreshPending = false;
+      }
+      stopAsinMonitorProgressPolling();
+      hideProgress();
+    } catch (_) {}
+  }
+  function ensureAsinMonitorProgressPolling() {
+    if (asinMonitorProgressPollTimer) return;
+    const tick = () => {
+      syncAsinMonitorProgressOnce().catch(() => {});
+    };
+    tick();
+    asinMonitorProgressPollTimer = window.setInterval(tick, 1500);
   }
   runAsinMonitorBtn.addEventListener("click", async () => {
     try {
@@ -3186,35 +4369,19 @@
       showProgress("正在连接 Amazon，准备抓取...");
       setAsinMonitorStatus("正在抓取今天的数据，这一步可能需要几分钟...");
       runAsinMonitorBtn.disabled = true;
-      // 轮询后端真实进度
-      let pollDone = false;
-      const pollProgress = async () => {
-        while (!pollDone) {
-          try {
-            const resp = await fetch(`${API_BASE}/api/asin-monitor/progress`);
-            if (resp.ok) {
-              const p = await resp.json();
-              if (p.running && p.total > 0) {
-                const pct = Math.round((p.completed / p.total) * 100);
-                setProgressPercent(pct, p.status || `已完成 ${p.completed}/${p.total}`);
-              }
-            }
-          } catch (_) {}
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-      };
-      const pollPromise = pollProgress();
+      asinMonitorProgressRefreshPending = true;
+      ensureAsinMonitorProgressPolling();
       const resp = await fetch(`${API_BASE}/api/asin-monitor/run-now`, { method: "POST" });
-      pollDone = true;
-      await pollPromise;
       const data = await parseApiResponse(resp);
       if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
       setProgressPercent(100, "抓取完成！");
       await new Promise((r) => setTimeout(r, 600));
       renderAsinMonitorResults(data.results || []);
       setAsinMonitorStatus(`抓取完成：本次处理 ${data.count || 0} 个 ASIN。`);
+      asinMonitorProgressRefreshPending = false;
       hideProgress();
     } catch (err) {
+      asinMonitorProgressRefreshPending = false;
       hideProgress();
       setAsinMonitorStatus(`立即抓取失败：${err.message || err}`);
     } finally {
@@ -3233,11 +4400,14 @@
       if (saved.mode && (saved.mode === "even" || saved.mode === "custom")) modeSelect.value = saved.mode;
       if (saved.customStart != null) customStartInput.value = String(saved.customStart);
       if (saved.customEnd != null) customEndInput.value = String(saved.customEnd);
-      if (saved.markerMode && ["BD", "PD", "PC"].includes(String(saved.markerMode).toUpperCase())) {
+      if (saved.markerMode && ["BD", "PD", "PC", "SP"].includes(String(saved.markerMode).toUpperCase())) {
         state.markerMode = String(saved.markerMode).toUpperCase();
       }
       if (Array.isArray(saved.productSim)) {
         state.productSim = new Map(saved.productSim);
+      }
+      if (Array.isArray(saved.strategies)) {
+        state.strategies = new Map(saved.strategies);
       }
     }
   } catch (_) {}
@@ -3245,11 +4415,14 @@
   // 页面加载时优先恢复后端共享数据（局域网共用）
   (async () => {
     try {
+      setInitializing(true);
       setAsinMonitorResultsLoading(true);
       await loadFeishuConfig();
       await loadAsinMonitorConfig();
       await refreshAsinMonitorResults();
-      const resp = await fetch(`${API_BASE}/api/shared-state`);
+      const resp = await fetch(apiUrl("/api/shared-state"), {
+        headers: apiHeaders(),
+      });
       if (resp.ok) {
         const data = await resp.json();
         if (Array.isArray(data.records) && data.records.length) {
@@ -3262,11 +4435,11 @@
           migrateFutureToHistoryAllProducts();
           await recalc({ recommend: false });
           renderHistoryPanel();
-          await saveSharedStateToServer();
         }
       }
     } catch (_) {}
     finally {
+      setInitializing(false);
       setAsinMonitorResultsLoading(false);
     }
   })();
@@ -3282,12 +4455,19 @@
   renderHistoryPanel();
   updateModeVisibility();
   renderMarkerModeButtons();
+  renderSkuSwitchPanel();
+  renderStrategyOptions();
   renderAsinTrendRangeButtons();
   updateMarkerFloatPosition();
+  updateSkuSwitchPosition();
+  syncImportBusyUi();
+  syncAsinMonitorProgressOnce({ startPollingIfRunning: true }).catch(() => {});
   window.addEventListener("resize", updateMarkerFloatPosition);
+  window.addEventListener("resize", updateSkuSwitchPosition);
   window.addEventListener("resize", resizeAsinTrendChart);
   window.addEventListener("resize", syncMonitorStickyHeader);
   window.addEventListener("scroll", updateMarkerFloatPosition, { passive: true });
+  window.addEventListener("scroll", updateSkuSwitchPosition, { passive: true });
   window.addEventListener("scroll", syncMonitorStickyHeader, { passive: true });
   if (monitorTableScroll) {
     monitorTableScroll.addEventListener("scroll", syncMonitorStickyHeader, { passive: true });

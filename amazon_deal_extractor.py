@@ -6,6 +6,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from bs4 import BeautifulSoup
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
@@ -65,6 +66,31 @@ def _first_match(text: str, patterns: list[str], flags: int = re.IGNORECASE | re
             if value:
                 return value
     return None
+
+
+def _strip_html_tags(fragment: str) -> str:
+    return _clean_text(re.sub(r"<[^>]+>", " ", fragment or ""))
+
+
+def _extract_element_html(page_html: str, element_id: str) -> str:
+    soup = BeautifulSoup(page_html or "", "html.parser")
+    element = soup.find(id=element_id)
+    return str(element) if element is not None else ""
+
+
+def _extract_price_scope_html(ppd_html: str) -> str:
+    soup = BeautifulSoup(ppd_html or "", "html.parser")
+    fragments: list[str] = []
+    for element_id in (
+        "corePriceDisplay_desktop_feature_div",
+        "apex_desktop",
+        "corePrice_feature_div",
+        "desktop_buybox",
+    ):
+        element = soup.find(id=element_id)
+        if element is not None:
+            fragments.append(str(element))
+    return "\n".join(fragments)
 
 
 def _normalize_price(value: str | None) -> str | None:
@@ -231,8 +257,12 @@ def _extract_selected_variant_from_twister(page_html: str) -> str | None:
 
 
 def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
+    ppd_html = _extract_element_html(html, "ppd")
+    # Price fields must come strictly from the main product container.
+    price_html = ppd_html or ""
+
     discount_badge_scope = _first_match(
-        html,
+        price_html,
         [
             r'(<div id="dealBadge_feature_div".*?</div>)',
         ],
@@ -248,24 +278,14 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
         )
     if not discount_type:
         discount_type = _first_match(
-            html,
+            price_html,
             [
                 r'"messaging"\s*:\s*\{\s*"content"\s*:\s*\{\s*"fragments"\s*:\s*\[\s*\{\s*"text"\s*:\s*"([^"]*deal)"',
             ],
         )
 
-    price_scope = _first_match(
-        html,
-        [
-            r'(<div id="corePriceDisplay_desktop_feature_div".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
-            r'(<div id="apex_desktop".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
-            r'(<div id="desktop_buybox".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
-            r'(<div id="corePrice_feature_div".*?<div id="tp-inline-twister-dim-values-container".*?</div>)',
-            r'(<div id="corePriceDisplay_desktop_feature_div".*?<div id="amazonGlobal_feature_div".*?</div>)',
-            r'(<div id="apex_desktop".*?<div id="amazonGlobal_feature_div".*?</div>)',
-            r'(<div id="desktop_buybox".*?<div id="buybox".*?</div>)',
-        ],
-    ) or html
+    price_scope = _extract_price_scope_html(price_html)
+    price_scope_text = _strip_html_tags(price_scope)
 
     discount_strength = _first_match(
         price_scope,
@@ -292,22 +312,34 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
             ],
         )
     )
+    if not discount_price:
+        discount_price = _normalize_price(
+            _first_match(
+                price_scope_text,
+                [
+                    r"([$\d,]+\.\d{2})\s+with\s+\d+\s+percent\s+savings",
+                    r"One-time purchase:\s*([$\d,]+\.\d{2})",
+                ],
+                flags=re.IGNORECASE,
+            )
+        )
 
+    # Only the main product price widgets are trusted for list price. PQV,
+    # swatches, and other helper overlays can describe nearby variants.
     list_price = _normalize_price(
         _first_match(
             price_scope,
             [
-                r'"label"\s*:\s*"List Price:?"\s*,.*?"displayString"\s*:\s*"([^"]+)"',
-                r'"listPrice"[^{}]{0,300}?"displayString":"([^"]+)"',
-                r"List Price:?\s*</span>\s*<span[^>]*>\s*([$\d,]+\.\d{2})",
+                r'List Price:\s*<span class="a-text-strike">\s*\$?([\d,]+\.\d{2})\s*</span>',
+                r'List Price:</span>\s*<span class="a-letter-space"></span>\s*<span class="a-price a-text-price"[^>]*>.*?<span class="a-offscreen">\s*\$?([\d,]+\.\d{2})\s*</span>',
             ],
         )
     )
     if not list_price:
         list_price = _normalize_price(
             _first_match(
-                body_text,
-                [r"List Price:?\s*([$\d,]+\.\d{2})"],
+                price_scope_text,
+                [r"\bList Price:\s*([$\d,]+\.\d{2})"],
                 flags=re.IGNORECASE,
             )
         )
@@ -327,7 +359,7 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
     if not typical_price:
         typical_price = _normalize_price(
             _first_match(
-                body_text,
+                price_scope_text,
                 [
                     r"Typical price:?\s*([$\d,]+\.\d{2})",
                     r"Was Price:?\s*([$\d,]+\.\d{2})",
@@ -349,7 +381,7 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
     if not regular_price:
         regular_price = _normalize_price(
             _first_match(
-                body_text,
+                price_scope_text,
                 [r"Regular Price:?\s*([$\d,]+\.\d{2})"],
                 flags=re.IGNORECASE,
             )
@@ -368,7 +400,7 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
     if not prime_member_price:
         prime_member_price = _normalize_price(
             _first_match(
-                body_text,
+                price_scope_text,
                 [r"Prime Member Price:?\s*([$\d,]+\.\d{2})"],
                 flags=re.IGNORECASE,
             )
@@ -391,8 +423,8 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
         regular_price,
     )
 
-    color = _extract_selected_variant_from_twister(html) or _first_match(
-        html,
+    color = _extract_selected_variant_from_twister(price_html) or _first_match(
+        price_html,
         [
             r'"variation_color_name"\s*:\s*"([^"]+)"',
             r'"variation_style_name"\s*:\s*"([^"]+)"',
@@ -405,7 +437,7 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
 
     image_url = _normalize_image_url(
         _first_match(
-            html,
+            price_html,
             [
                 r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
                 r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
