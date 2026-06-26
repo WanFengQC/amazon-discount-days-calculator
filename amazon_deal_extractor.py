@@ -78,6 +78,12 @@ def _extract_element_html(page_html: str, element_id: str) -> str:
     return str(element) if element is not None else ""
 
 
+def _extract_element_text(page_html: str, element_id: str) -> str:
+    soup = BeautifulSoup(page_html or "", "html.parser")
+    element = soup.find(id=element_id)
+    return _clean_text(element.get_text(" ", strip=True)) if element is not None else ""
+
+
 def _extract_price_scope_html(ppd_html: str) -> str:
     soup = BeautifulSoup(ppd_html or "", "html.parser")
     fragments: list[str] = []
@@ -91,6 +97,20 @@ def _extract_price_scope_html(ppd_html: str) -> str:
         if element is not None:
             fragments.append(str(element))
     return "\n".join(fragments)
+
+
+def _extract_deal_badge_text(ppd_html: str) -> str | None:
+    text = _extract_element_text(ppd_html, "dealBadge_feature_div")
+    if not text:
+        return None
+    match = re.search(
+        r"\b(Prime Day Deal|Prime Big Deal|Prime Exclusive Deal|Lightning Deal|Deal of the Day|Limited time deal)\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return " ".join(word.capitalize() for word in match.group(1).split())
 
 
 def _normalize_price(value: str | None) -> str | None:
@@ -261,21 +281,7 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
     # Price fields must come strictly from the main product container.
     price_html = ppd_html or ""
 
-    discount_badge_scope = _first_match(
-        price_html,
-        [
-            r'(<div id="dealBadge_feature_div".*?</div>)',
-        ],
-    )
-    discount_type = None
-    if discount_badge_scope:
-        discount_type = _first_match(
-            discount_badge_scope,
-            [
-                r">\s*((?:Limited|Prime Exclusive|Prime Big Deal|Lightning|Deal of the Day)[^<]{0,40}?deal)\s*<",
-                r'"content"\s*:\s*\{\s*"fragments"\s*:\s*\[\s*\{\s*"text"\s*:\s*"([^"]*deal)"',
-            ],
-        )
+    discount_type = _extract_deal_badge_text(price_html)
     if not discount_type:
         discount_type = _first_match(
             price_html,
@@ -286,6 +292,8 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
 
     price_scope = _extract_price_scope_html(price_html)
     price_scope_text = _strip_html_tags(price_scope)
+    buybox_deal_text = _extract_element_text(price_html, "primeSavingsUpsellAccordionRow")
+    buybox_regular_text = _extract_element_text(price_html, "newAccordionRow_1")
 
     discount_strength = _first_match(
         price_scope,
@@ -320,6 +328,14 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
                     r"([$\d,]+\.\d{2})\s+with\s+\d+\s+percent\s+savings",
                     r"One-time purchase:\s*([$\d,]+\.\d{2})",
                 ],
+                flags=re.IGNORECASE,
+            )
+        )
+    if not discount_price:
+        discount_price = _normalize_price(
+            _first_match(
+                buybox_deal_text,
+                [r"\bDeal Price\s*([$\d,]+\.\d{2})"],
                 flags=re.IGNORECASE,
             )
         )
@@ -383,6 +399,14 @@ def _extract_from_html(html: str, body_text: str) -> dict[str, str | None]:
             _first_match(
                 price_scope_text,
                 [r"Regular Price:?\s*([$\d,]+\.\d{2})"],
+                flags=re.IGNORECASE,
+            )
+        )
+    if not regular_price:
+        regular_price = _normalize_price(
+            _first_match(
+                buybox_regular_text,
+                [r"\bRegular Price\s*([$\d,]+\.\d{2})"],
                 flags=re.IGNORECASE,
             )
         )

@@ -798,10 +798,11 @@
       background: #ffffff;
       border-radius: 12px;
       padding: 9px 10px;
-      min-height: 84px;
+      min-height: 114px;
       cursor: pointer;
       text-align: left;
       box-shadow: 0 2px 8px rgba(34, 96, 170, 0.06);
+      overflow: hidden;
     }
 
     .day.selected {
@@ -872,13 +873,13 @@
       padding: 1px 7px;
     }
     .day .meta {
-      font-size: 9px;
+      font-size: 10px;
       margin-top: 4px;
       color: #527495;
-      line-height: 1.2;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      line-height: 1.3;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .day.selected .date,
     .day.selected .tag {
@@ -929,6 +930,21 @@
     .day.disabled .tag {
       background: #f2f5f9;
       border-color: #d9e4f2;
+    }
+    .future-median-summary {
+      margin: 6px 0 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #f6fbff 0%, #edf5ff 100%);
+      border: 1px solid #d6e6fb;
+      color: #476a90;
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .future-median-summary strong {
+      color: #1f5ea8;
     }
 
     .tip { margin-top: 8px; color: var(--muted); font-size: 13px; }
@@ -1408,6 +1424,7 @@
 
   <section id="futureCard" class="card future-card">
     <div class="tip">未来日历模拟（单点切换折扣日，灰色=当前不可选）</div>
+    <div id="futureMedianSummary" class="future-median-summary">未来90天中位价参考：请先加载每日监控价格历史。</div>
     <div id="violationText" class="tip"></div>
     <div class="week-header">
       <div class="week-day">周一</div>
@@ -1718,6 +1735,7 @@
   const feishuPreview = document.getElementById("feishuPreview");
   let selectedOpenIdSet = new Set();
   let asinMonitorAllRows = [];
+  const asinMonitorEffectivePriceCache = new Map();
   let asinMonitorSelectedDate = "";
   let asinMonitorSelectedPsku = "";
   let asinMonitorConfiguredAsins = [];
@@ -2264,6 +2282,7 @@
   const calendarEl = document.getElementById("calendar");
   const errorBox = document.getElementById("errorBox");
   const violationText = document.getElementById("violationText");
+  const futureMedianSummary = document.getElementById("futureMedianSummary");
   const historyRangeText = document.getElementById("historyRangeText");
   const historyCalendar = document.getElementById("historyCalendar");
 
@@ -2814,6 +2833,10 @@
   }
   function renderAsinMonitorResults(rows) {
     asinMonitorAllRows = Array.isArray(rows) ? rows.slice() : [];
+    asinMonitorEffectivePriceCache.clear();
+    if (state.dayRows.length) {
+      renderCalendar();
+    }
     updateAsinMonitorPskuFilter(asinMonitorAllRows);
     updateAsinMonitorDateControls(asinMonitorAllRows);
     asinMonitorResults.innerHTML = "";
@@ -3090,6 +3113,142 @@
     if (!text || text === "-") return null;
     const match = text.match(/-?\d+(?:\.\d+)?/);
     return match ? Number(match[0]) : null;
+  }
+  function getMonitorEffectivePrice(row) {
+    const discountPrice = parseMonitorPrice(row?.discount_price);
+    if (Number.isFinite(discountPrice)) return discountPrice;
+    const regularPrice = parseMonitorPrice(row?.regular_price);
+    if (Number.isFinite(regularPrice)) return regularPrice;
+    return null;
+  }
+  function isAdvertisedPromotionRow(row) {
+    return !!String(row?.discount_type || "").trim();
+  }
+  function computeMedian(values) {
+    const sorted = values
+      .filter((value) => Number.isFinite(value))
+      .sort((a, b) => a - b);
+    if (!sorted.length) return null;
+    const middle = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 1) return sorted[middle];
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+  function getSelectedProductAsin() {
+    const product = state.recordsByProduct.get(state.selectedKey);
+    const asin = String(product?.meta?.ASIN || state.selectedKey || "").trim().toUpperCase();
+    return asin;
+  }
+  function getAsinEffectivePriceHistory(asin) {
+    const asinKey = String(asin || "").trim().toUpperCase();
+    if (!asinKey) return [];
+    if (asinMonitorEffectivePriceCache.has(asinKey)) {
+      return asinMonitorEffectivePriceCache.get(asinKey) || [];
+    }
+    const grouped = new Map();
+    for (const row of asinMonitorAllRows) {
+      if (String(row?.asin || "").trim().toUpperCase() !== asinKey) continue;
+      const fetchDate = String(row?.fetch_date || "").trim();
+      const price = getMonitorEffectivePrice(row);
+      if (!fetchDate || !Number.isFinite(price)) continue;
+      const prev = grouped.get(fetchDate);
+      const fetchedAt = String(row?.fetched_at || "").trim();
+      if (!prev || fetchedAt > prev.fetchedAt) {
+        grouped.set(fetchDate, {
+          date: fetchDate,
+          value: price,
+          fetchedAt,
+          advertisedPromo: isAdvertisedPromotionRow(row),
+        });
+      }
+    }
+    const points = Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date));
+    asinMonitorEffectivePriceCache.set(asinKey, points);
+    return points;
+  }
+  function buildFutureMedianMap(asin, dayRows) {
+    const points = getAsinEffectivePriceHistory(asin);
+    const result = new Map();
+    if (!points.length) return result;
+    const priceByDate = new Map(points.map((point) => [point.date, {
+      date: point.date,
+      value: point.value,
+      advertisedPromo: !!point.advertisedPromo,
+      projected: false,
+    }]));
+    const rows = Array.isArray(dayRows) ? dayRows.slice().sort((a, b) => String(a?.date || "").localeCompare(String(b?.date || ""))) : [];
+    for (const row of rows) {
+      const targetDate = String(row?.date || "").trim();
+      if (!targetDate) continue;
+      const windowPoints = [];
+      for (let offset = 90; offset >= 1; offset--) {
+        const sourceDate = dateAddIso(targetDate, -offset);
+        const sourcePoint = priceByDate.get(sourceDate);
+        if (sourcePoint && Number.isFinite(sourcePoint.value)) {
+          windowPoints.push(sourcePoint);
+        }
+      }
+      const allValues = windowPoints.map((point) => point.value);
+      const nonPromoValues = windowPoints
+        .filter((point) => !point.advertisedPromo)
+        .map((point) => point.value);
+      const nonPromoMedian = computeMedian(nonPromoValues);
+      const fallbackAllMedian = computeMedian(allValues);
+      let median = nonPromoMedian;
+      let usedAllPrices = false;
+      let lowerThanNonPromoMedianDays = 0;
+      if (Number.isFinite(nonPromoMedian)) {
+        lowerThanNonPromoMedianDays = windowPoints.filter((point) => point.value < nonPromoMedian).length;
+        if (lowerThanNonPromoMedianDays > windowPoints.length / 2) {
+          median = fallbackAllMedian;
+          usedAllPrices = true;
+        }
+      } else {
+        median = fallbackAllMedian;
+        usedAllPrices = true;
+      }
+      result.set(targetDate, {
+        median,
+        sampleCount: allValues.length,
+        nonPromoSampleCount: nonPromoValues.length,
+        windowStart: dateAddIso(targetDate, -90),
+        windowEnd: dateAddIso(targetDate, -1),
+        usedAllPrices,
+        lowerThanNonPromoMedianDays,
+      });
+      if (Number.isFinite(median)) {
+        priceByDate.set(targetDate, {
+          date: targetDate,
+          value: median,
+          advertisedPromo: false,
+          projected: true,
+        });
+      }
+    }
+    return result;
+  }
+  function renderFutureMedianSummary(dayRows, futureMedianMap) {
+    if (!futureMedianSummary) return;
+    const asin = getSelectedProductAsin();
+    if (!asin) {
+      futureMedianSummary.textContent = "Typical Price参考：当前商品缺少 ASIN，无法匹配每日监控历史。";
+      return;
+    }
+    const points = getAsinEffectivePriceHistory(asin);
+    if (!points.length) {
+      futureMedianSummary.textContent = `Typical Price参考：ASIN ${asin} 暂无可用历史价格。当前近似取价规则为 Discount Price 优先，没有则取 Regular Price。`;
+      return;
+    }
+    const firstRow = Array.isArray(dayRows) && dayRows.length ? dayRows[0] : null;
+    const firstMedian = firstRow ? futureMedianMap.get(firstRow.date) : null;
+    const latestDate = points[points.length - 1]?.date || "-";
+    if (!Number.isFinite(firstMedian?.median)) {
+      futureMedianSummary.textContent = `Typical Price参考：ASIN ${asin} 已匹配 ${points.length} 天历史价格，但当前窗口不足以产出参考值。`;
+      return;
+    }
+    const pricingRuleText = firstMedian.usedAllPrices
+      ? "当前窗口触发“低于非促销中位价的价格日超过一半”，因此回退为全部价格日中位数。"
+      : "当前窗口使用非促销价格日中位数。";
+    futureMedianSummary.innerHTML = `Typical Price参考：<strong>${asin}</strong> 已匹配 <strong>${points.length}</strong> 天历史价格，最新采样日 <strong>${latestDate}</strong>。D+1 使用 <strong>${firstMedian.windowStart} ~ ${firstMedian.windowEnd}</strong> 的90天窗口，先按非促销价格计算；若低于该中位价的价格日超过一半，则改用全部价格日。当前 D+1 参考值 <strong>${formatTrendPrice(firstMedian.median)}</strong>。${pricingRuleText} 后续日期按前一日参考值递推。`;
   }
   function hasDealPrice(row) {
     return !!String(row?.discount_type || "").trim();
@@ -3496,6 +3655,8 @@
   function renderCalendar() {
     calendarEl.innerHTML = "";
     const rows = state.dayRows;
+    const futureMedianMap = buildFutureMedianMap(getSelectedProductAsin(), rows);
+    renderFutureMedianSummary(rows, futureMedianMap);
     if (rows.length > 0) {
       const [y, m, d] = rows[0].date.split("-").map(Number);
       const firstDate = new Date(y, m - 1, d);
@@ -3525,7 +3686,11 @@
         : row.selected
         ? displayMarker(localMarker || "PD")
         : "未选";
-      btn.innerHTML = `<div class="date"><span class="date-main">${row.date}</span><span class="date-offset">D+${row.offset + 1}</span></div><div class="tag">${tag}</div><div class="meta">前90天: ${row.past90_count}/44</div><div class="meta">选后余量: ${row.remaining_after_select} 天</div>`;
+      const medianInfo = futureMedianMap.get(row.date);
+      const medianText = Number.isFinite(medianInfo?.median)
+        ? formatTrendPrice(medianInfo.median)
+        : "-";
+      btn.innerHTML = `<div class="date"><span class="date-main">${row.date}</span><span class="date-offset">D+${row.offset + 1}</span></div><div class="tag">${tag}</div><div class="meta">前90天: ${row.past90_count}/44</div><div class="meta">选后余量: ${row.remaining_after_select} 天</div><div class="meta">Typical Price参考: ${medianText}</div>`;
       btn.onclick = async () => {
         if (state.loading) return;
         const mode = state.markerMode || "PD";
